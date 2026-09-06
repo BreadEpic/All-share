@@ -76,10 +76,10 @@
     {
       "name": "inputPing",
       "type": 7,
-      "hex": "070f0000000807060504030201",
+      "hex": "070f0000004022224648470600",
       "value": {
         "seq": 15,
-        "tsMicro": 72623859790382856
+        "tsMicro": 1767225600123456
       }
     },
     {
@@ -98,9 +98,9 @@
     {
       "name": "frameMark",
       "type": 134,
-      "hex": "86ddccbbaa120000008877665544332211b80b00006eb2000001",
+      "hex": "86ddccbbaa12000000f13b2a4648470600b80b00006eb2000001",
       "value": {
-        "captureMicro": 1234605616436508552,
+        "captureMicro": 1767225600654321,
         "encodeMicro": 3000,
         "inputSeq": 18,
         "keyframe": true,

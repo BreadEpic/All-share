@@ -1,0 +1,17 @@
+{
+  "agentEpk": "uYxxUPx80QkPDOsZWs7Z0FJFz6gJ3nxFPgR5-lAbQ0k",
+  "agentIdPub": "HpE_9Fl7sB2dFu3ERc0Zkf26EikjihWXx634AZ2i9AY",
+  "clientEpk": "ZSZrO2EmX03FHLD6lsvH8g13Gjdi9NBuz2JPeDDriGw",
+  "clientIdPub": "9oUnwwHCes5ezDz_ewV2fX11x6FzgBPD11g3EDb6pKI",
+  "clientLabel": "Chromebook",
+  "code": "K7M2Q9XR4TVZ",
+  "codeId": "HjXjnyzv3ZV69c5thRGMPg",
+  "confirmAgent": "hbHqUXUYoXb8WHjcKwXvJ9PNmBkHy_9jA0TL1mQAvTg",
+  "confirmClient": "Rg2KXfNe7b1VXB5GJG1auPgkU22Vm5DNtOVIGBDwG6U",
+  "deviceName": "My Gaming PC",
+  "master": "h4ASMYQwdC41Gk791mo4JjyJaLeiDQCnRGX_hJJ0BOo",
+  "password": "EbvsryHJn55sRhoDQyMW5lAuScGlBR7lh8V0mIfYXv0",
+  "salt": "AQIDBAUGBwgJCgsMDQ4PEA",
+  "shared": "hVuG7wHc6Ew4U-Ttkc7ACMh5EQD8bkunNULR5Zzf-Tk",
+  "transcriptHash": "ELJw82b8cxZGCoh2UZRaM7UcqZSGIS1a-Y6JVmy0Z28"
+}

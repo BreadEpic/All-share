@@ -1,0 +1,176 @@
+/*
+ * ALL SHARE — design tokens
+ *
+ * Two themes driven entirely by custom properties, so every component is
+ * written once. data-theme="system" follows the Chromebook's own setting;
+ * "dark" and "light" are explicit user choices that survive a reload.
+ *
+ * Typography is a system font stack on purpose. Web fonts are fetched with
+ * CORS and are therefore blocked when this page runs from file://, so a
+ * downloaded font would silently fall back and shift the layout. System fonts
+ * also render instantly and match the device the user is holding.
+ */
+
+:root {
+  color-scheme: dark;
+
+  --font-ui: "Segoe UI Variable Display", "Segoe UI", Roboto, -apple-system,
+             BlinkMacSystemFont, "Helvetica Neue", Arial, "Noto Sans", sans-serif;
+  --font-mono: ui-monospace, "Cascadia Mono", "SF Mono", "Roboto Mono",
+               Menlo, Consolas, monospace;
+
+  --bg-0: #07080C;
+  --bg-1: #0D0F16;
+  --bg-2: #141824;
+  --bg-3: #1B2130;
+  --bg-hover: #202739;
+  --border: #232A3B;
+  --border-strong: #333C52;
+
+  --text: #E9EDF6;
+  --text-dim: #98A1B6;
+  --text-faint: #646E85;
+
+  --accent: #4F7DFF;
+  --accent-2: #9A6BFF;
+  --accent-soft: rgba(79, 125, 255, 0.14);
+  --accent-text: #FFFFFF;
+
+  --ok: #34D399;
+  --ok-soft: rgba(52, 211, 153, 0.14);
+  --warn: #FBBF24;
+  --warn-soft: rgba(251, 191, 36, 0.14);
+  --danger: #F87171;
+  --danger-soft: rgba(248, 113, 113, 0.14);
+
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, .4);
+  --shadow-2: 0 8px 24px rgba(0, 0, 0, .45);
+  --shadow-3: 0 24px 64px rgba(0, 0, 0, .55);
+
+  --r-sm: 8px;
+  --r-md: 12px;
+  --r-lg: 18px;
+  --r-pill: 999px;
+
+  --gap: 16px;
+  --pad: 20px;
+
+  /* One shared easing so nothing in the product animates out of character. */
+  --ease: cubic-bezier(.22, .61, .36, 1);
+  --fast: 120ms;
+  --med: 220ms;
+  --slow: 400ms;
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+
+  --bg-0: #F4F6FA;
+  --bg-1: #FFFFFF;
+  --bg-2: #FFFFFF;
+  --bg-3: #EEF1F7;
+  --bg-hover: #E7ECF5;
+  --border: #DDE3ED;
+  --border-strong: #C3CCDC;
+
+  --text: #10141D;
+  --text-dim: #55607A;
+  --text-faint: #8A94AA;
+
+  --accent-soft: rgba(79, 125, 255, 0.12);
+  --ok-soft: rgba(16, 150, 100, 0.12);
+  --warn-soft: rgba(180, 120, 0, 0.14);
+  --danger-soft: rgba(220, 60, 60, 0.12);
+  --ok: #10966A;
+  --warn: #B47800;
+  --danger: #D64545;
+
+  --shadow-1: 0 1px 2px rgba(16, 24, 40, .06);
+  --shadow-2: 0 8px 24px rgba(16, 24, 40, .10);
+  --shadow-3: 0 24px 64px rgba(16, 24, 40, .16);
+}
+
+@media (prefers-color-scheme: light) {
+  :root[data-theme="system"] {
+    color-scheme: light;
+
+    --bg-0: #F4F6FA;
+    --bg-1: #FFFFFF;
+    --bg-2: #FFFFFF;
+    --bg-3: #EEF1F7;
+    --bg-hover: #E7ECF5;
+    --border: #DDE3ED;
+    --border-strong: #C3CCDC;
+
+    --text: #10141D;
+    --text-dim: #55607A;
+    --text-faint: #8A94AA;
+
+    --accent-soft: rgba(79, 125, 255, 0.12);
+    --ok-soft: rgba(16, 150, 100, 0.12);
+    --warn-soft: rgba(180, 120, 0, 0.14);
+    --danger-soft: rgba(220, 60, 60, 0.12);
+    --ok: #10966A;
+    --warn: #B47800;
+    --danger: #D64545;
+
+    --shadow-1: 0 1px 2px rgba(16, 24, 40, .06);
+    --shadow-2: 0 8px 24px rgba(16, 24, 40, .10);
+    --shadow-3: 0 24px 64px rgba(16, 24, 40, .16);
+  }
+}
+
+/* The session view is always dark: a bright chrome around a remote desktop is
+   distracting, and a black surround makes the stream look sharper. */
+.screen--session {
+  color-scheme: dark;
+  --bg-0: #000;
+  --bg-1: #0D0F16;
+  --bg-2: #141824;
+  --bg-3: #1B2130;
+  --border: #232A3B;
+  --text: #E9EDF6;
+  --text-dim: #98A1B6;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+/* The hidden attribute must win over any component's own display value.
+   Without this, anything laid out with flex or grid stays visible when hidden,
+   which is a whole class of "why is that still on screen" bugs. */
+[hidden] { display: none !important; }
+
+html, body {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--bg-0);
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 15px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  overflow: hidden;
+}
+
+button, input, select, textarea { font: inherit; color: inherit; }
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+:focus:not(:focus-visible) { outline: none; }
+
+::selection { background: var(--accent); color: #fff; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+  }
+}

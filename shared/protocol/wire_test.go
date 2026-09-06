@@ -334,13 +334,13 @@ func TestWriteVectors(t *testing.T) {
 	m6 := KeyStateSync{Seq: 13, TSMilli: 14, Buttons: 0, State: KeyBitmap{}}
 	add("keyStateSync", TypeKeyStateSync, m6.Encode(nil), map[string]any{"seq": m6.Seq, "ts": m6.TSMilli, "buttons": m6.Buttons, "state": hexOf(m6.State[:])})
 
-	m7 := InputPing{Seq: 15, TSMic: 0x0102030405060708}
+	m7 := InputPing{Seq: 15, TSMic: 1_767_225_600_123_456} // realistic: microseconds since the Unix epoch
 	add("inputPing", TypeInputPing, m7.Encode(nil), map[string]any{"seq": m7.Seq, "tsMicro": m7.TSMic})
 
 	m8 := CursorState{Seq: 16, ShapeID: 17, X: 100, Y: 200, Visible: true, Relative: false}
 	add("cursorState", TypeCursorState, m8.Encode(nil), map[string]any{"seq": m8.Seq, "shapeId": m8.ShapeID, "x": m8.X, "y": m8.Y, "visible": m8.Visible, "relative": m8.Relative})
 
-	m9 := FrameMark{RTPTimestamp: 0xAABBCCDD, InputSeq: 18, CaptureMicro: 0x1122334455667788, EncodeMicro: 3000, SizeBytes: 45678, Keyframe: true}
+	m9 := FrameMark{RTPTimestamp: 0xAABBCCDD, InputSeq: 18, CaptureMicro: 1_767_225_600_654_321, EncodeMicro: 3000, SizeBytes: 45678, Keyframe: true}
 	add("frameMark", TypeFrameMark, m9.Encode(nil), map[string]any{"rtpTimestamp": m9.RTPTimestamp, "inputSeq": m9.InputSeq, "captureMicro": m9.CaptureMicro, "encodeMicro": m9.EncodeMicro, "sizeBytes": m9.SizeBytes, "keyframe": m9.Keyframe})
 
 	m10 := Pong{Seq: 19, ClientTSMic: 0x1000, AgentTSMic: 0x2000}

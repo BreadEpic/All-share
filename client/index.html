@@ -1,0 +1,219 @@
+<!doctype html>
+<html lang="en" data-theme="system">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark light">
+<title>ALL SHARE</title>
+<meta name="description" content="ALL SHARE — control your Windows PC from anywhere. Powered by MMC.">
+
+<!--
+  ALL SHARE — Chromebook client
+  Powered by MMC
+
+  This page is designed to run correctly when opened straight off disk as
+  file:///…/index.html, with no server, no build step and no extension.
+
+  Three browser rules shape everything below, and each was verified against
+  Chromium rather than assumed:
+
+    * <script type="module"> is fetched with CORS and always fails from
+      file://. Classic <script src> is not, and works. So every file here is a
+      classic script and modules are namespaced by hand.
+    * new Worker('file.js') throws a SecurityError from file://. Workers must
+      be constructed from a Blob URL, which does work.
+    * @font-face and fetch() of sibling files are blocked. So: system fonts
+      only, and no asset is ever fetched at runtime. Icons are inline SVG.
+
+  Load order matters: core, then net, then input, then ui, then the app.
+-->
+<link rel="stylesheet" href="css/theme.css">
+<link rel="stylesheet" href="css/app.css">
+<link rel="stylesheet" href="css/session.css">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%234F7DFF'/%3E%3Cpath d='M8 12h16v9H8z' fill='none' stroke='white' stroke-width='2' stroke-linejoin='round'/%3E%3Cpath d='M13 24h6' stroke='white' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E">
+</head>
+<body>
+
+<div id="app" class="app" aria-live="polite">
+
+  <!-- ===================== Home ===================== -->
+  <div class="screen screen--home" data-screen="home">
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand__mark" aria-hidden="true"></span>
+        <span class="brand__text">
+          <span class="brand__name">ALL<span class="brand__name-thin">SHARE</span></span>
+          <span class="brand__by">Powered by MMC</span>
+        </span>
+      </div>
+      <div class="topbar__actions">
+        <button class="iconbtn" data-action="toggle-theme" title="Switch between light and dark" aria-label="Switch between light and dark" data-icon="moon"></button>
+        <button class="iconbtn" data-action="open-settings" title="Settings" aria-label="Settings" data-icon="gear"></button>
+      </div>
+    </header>
+
+    <main class="home">
+      <div class="home__head">
+        <h1 class="home__title">Your PCs</h1>
+        <button class="btn btn--ghost" data-action="add-pc">
+          <span class="btn__icon" data-icon="plus"></span> Add a PC
+        </button>
+      </div>
+
+      <div class="conn-banner" data-el="conn-banner" hidden>
+        <span class="conn-banner__dot"></span>
+        <span class="conn-banner__text" data-el="conn-banner-text"></span>
+        <button class="btn btn--tiny" data-action="retry-rendezvous">Try again</button>
+      </div>
+
+      <div class="devices" data-el="devices"></div>
+
+      <div class="empty" data-el="empty" hidden>
+        <div class="empty__art" data-icon="monitor-lg" aria-hidden="true"></div>
+        <h2 class="empty__title">No PCs yet</h2>
+        <p class="empty__body">
+          Install ALL SHARE on your Windows PC, open it, and choose
+          <strong>Add a device</strong>. It will show you a code.
+        </p>
+        <button class="btn btn--primary btn--lg" data-action="add-pc">Add a PC</button>
+      </div>
+
+      <div class="setup" data-el="setup" hidden>
+        <div class="setup__card">
+          <div class="setup__icon" data-icon="link" aria-hidden="true"></div>
+          <h2 class="setup__title">One quick thing</h2>
+          <p class="setup__body">
+            ALL SHARE needs the address of your ALL SHARE service. Your PC shows
+            it on the <strong>Add a device</strong> screen, just above the code.
+          </p>
+          <label class="field">
+            <span class="field__label">Service address</span>
+            <input class="field__input" type="text" data-el="setup-url"
+                   placeholder="wss://allshare.example.com/rv" spellcheck="false"
+                   autocapitalize="off" autocorrect="off">
+          </label>
+          <p class="field__error" data-el="setup-error" hidden></p>
+          <button class="btn btn--primary btn--lg" data-action="save-setup">Continue</button>
+        </div>
+      </div>
+    </main>
+
+    <footer class="footer">
+      <span data-el="footer-status">Starting…</span>
+    </footer>
+  </div>
+
+  <!-- ===================== Session ===================== -->
+  <div class="screen screen--session" data-screen="session" hidden>
+    <div class="stage" data-el="stage">
+      <video class="stage__video" data-el="video" playsinline autoplay></video>
+      <canvas class="stage__cursor" data-el="cursor-canvas" aria-hidden="true"></canvas>
+
+      <div class="stage__overlay" data-el="overlay">
+        <div class="overlay-card">
+          <div class="spinner" data-el="overlay-spinner"></div>
+          <div class="overlay-card__icon" data-el="overlay-icon" hidden></div>
+          <h2 class="overlay-card__title" data-el="overlay-title">Connecting…</h2>
+          <p class="overlay-card__body" data-el="overlay-body"></p>
+          <div class="overlay-card__steps" data-el="overlay-steps"></div>
+          <div class="overlay-card__actions" data-el="overlay-actions"></div>
+          <details class="overlay-card__details" data-el="overlay-details" hidden>
+            <summary>Advanced details</summary>
+            <pre data-el="overlay-detail-text"></pre>
+          </details>
+        </div>
+      </div>
+
+      <div class="toolbar" data-el="toolbar">
+        <div class="toolbar__group">
+          <button class="tbtn" data-action="toggle-lock" title="Mouse Lock — captures the pointer for games (Esc twice to release)">
+            <span data-icon="pointer"></span><span class="tbtn__label">Mouse Lock</span>
+          </button>
+          <button class="tbtn" data-action="toggle-keyboard" title="Send every key, including Alt+Tab and the Windows key">
+            <span data-icon="keyboard"></span><span class="tbtn__label">All Keys</span>
+          </button>
+          <button class="tbtn" data-action="clipboard" title="Share clipboard">
+            <span data-icon="clipboard"></span><span class="tbtn__label">Clipboard</span>
+          </button>
+          <button class="tbtn" data-action="toggle-audio" title="Sound">
+            <span data-icon="volume"></span><span class="tbtn__label">Sound</span>
+          </button>
+        </div>
+        <div class="toolbar__sep"></div>
+        <div class="toolbar__group">
+          <button class="tbtn" data-action="quality" title="Quality and performance">
+            <span data-icon="sliders"></span><span class="tbtn__label" data-el="quality-label">Balanced</span>
+          </button>
+          <button class="tbtn" data-action="displays" title="Choose a monitor" data-el="displays-btn" hidden>
+            <span data-icon="displays"></span><span class="tbtn__label">Displays</span>
+          </button>
+          <button class="tbtn" data-action="toggle-hud" title="Performance details">
+            <span data-icon="pulse"></span>
+          </button>
+          <button class="tbtn" data-action="fullscreen" title="Fullscreen">
+            <span data-icon="expand"></span>
+          </button>
+        </div>
+        <div class="toolbar__sep"></div>
+        <button class="tbtn tbtn--danger" data-action="disconnect" title="Disconnect">
+          <span data-icon="power"></span><span class="tbtn__label">Disconnect</span>
+        </button>
+      </div>
+
+      <div class="statuspill" data-el="statuspill">
+        <span class="statuspill__dot"></span>
+        <span data-el="statuspill-text"></span>
+      </div>
+
+      <div class="hud" data-el="hud" hidden>
+        <div class="hud__head">
+          <span class="hud__title">Performance</span>
+          <button class="hud__close" data-action="toggle-hud" aria-label="Close">×</button>
+        </div>
+        <div class="hud__grid" data-el="hud-grid"></div>
+        <div class="hud__graph"><canvas data-el="hud-graph" width="280" height="56"></canvas></div>
+        <div class="hud__foot" data-el="hud-foot"></div>
+      </div>
+
+      <div class="hint" data-el="hint" hidden></div>
+    </div>
+  </div>
+
+  <!-- ===================== Overlays ===================== -->
+  <div class="modal-root" data-el="modal-root" hidden></div>
+  <div class="toasts" data-el="toasts"></div>
+</div>
+
+<noscript>
+  <div style="padding:2rem;font:16px system-ui">
+    ALL SHARE needs JavaScript. Please enable it and reload this page.
+  </div>
+</noscript>
+
+<!-- Optional local configuration. Safe to be missing. -->
+<script src="config.js"></script>
+
+<!-- core -->
+<script src="js/core/util.js"></script>
+<script src="js/core/log.js"></script>
+<script src="js/core/store.js"></script>
+<script src="js/core/identity.js"></script>
+<!-- net -->
+<script src="js/net/protocol.js"></script>
+<script src="js/net/pairing.js"></script>
+<script src="js/net/rendezvous.js"></script>
+<script src="js/net/session.js"></script>
+<!-- input -->
+<script src="js/input/keymap.js"></script>
+<script src="js/input/input.js"></script>
+<!-- ui -->
+<script src="js/ui/icons.js"></script>
+<script src="js/ui/components.js"></script>
+<script src="js/ui/home.js"></script>
+<script src="js/ui/pairing-ui.js"></script>
+<script src="js/ui/settings.js"></script>
+<script src="js/ui/session-ui.js"></script>
+<!-- app -->
+<script src="js/app.js"></script>
+</body>
+</html>
