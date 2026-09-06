@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/mmc/all-share/server/internal/registry"
+	"github.com/mmc/all-share/internal/rendezvous/registry"
 	"github.com/mmc/all-share/shared/protocol"
 )
 

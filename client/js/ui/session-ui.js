@@ -55,6 +55,8 @@
     this._e2eHistory = new U.Ring(120);
     this._inputLatency = new U.Ema(0.15);
     this._lastFrameLatency = 0;
+    this._latencyMeasuredAt = 0;
+    this._lastMeasuredSeq = 0;
     this._audioMuted = false;
   }
 
@@ -303,13 +305,36 @@
     // the browser tells us that exact frame reached the screen, the difference
     // is a genuine end-to-end "key press to pixels" number rather than a
     // network round trip.
-    const sentAt = this.input && this.input.lastInputSentAt.get(event.mark.inputSeq);
+    //
+    // Each input is measured exactly once, on the first frame that reflects it.
+    // Without that, an idle moment re-reports the same stale input against
+    // every later frame and the figure climbs for no reason — which is a
+    // measurement bug, not latency.
+    const seq = event.mark.inputSeq;
+    if (!seq || seq === this._lastMeasuredSeq) return;
+    const sentAt = this.input && this.input.lastInputSentAt.get(seq);
     if (!sentAt) return;
+    this._lastMeasuredSeq = seq;
+
     const latency = event.displayedAt - sentAt;
     if (latency > 0 && latency < 3000) {
       this._lastFrameLatency = latency;
+      this._latencyMeasuredAt = event.displayedAt;
       this._e2eHistory.push(latency);
     }
+  };
+
+  /**
+   * The most recent end-to-end measurement, or 0 if it is too old to show.
+   *
+   * A number from several seconds ago describes a connection that may no longer
+   * exist, so the status pill falls back to the network estimate rather than
+   * displaying something stale.
+   */
+  SessionUI.prototype.freshLatency = function () {
+    if (!this._lastFrameLatency) return 0;
+    if (U.now() - this._latencyMeasuredAt > 4000) return 0;
+    return this._lastFrameLatency;
   };
 
   // ---------------------------------------------------------- cursor
@@ -420,7 +445,8 @@
     this._latencyHistory.push(stats.rttMs);
 
     const inputMs = this._inputLatency.get(0);
-    const shown = this._lastFrameLatency || (stats.e2eMs || (stats.rttMs + stats.decodeMs + stats.jitterBufferMs));
+    const shown = this.freshLatency() || stats.e2eMs ||
+      (stats.rttMs + stats.decodeMs + stats.jitterBufferMs);
 
     this.statusPill.classList.toggle('is-poor', stats.quality === 'fair');
     this.statusPill.classList.toggle('is-bad', stats.quality === 'poor');

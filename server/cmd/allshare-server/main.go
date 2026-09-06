@@ -28,10 +28,10 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/mmc/all-share/server/internal/pairing"
-	"github.com/mmc/all-share/server/internal/registry"
-	allsignal "github.com/mmc/all-share/server/internal/signal"
-	"github.com/mmc/all-share/server/internal/turnsvc"
+	"github.com/mmc/all-share/internal/rendezvous/pairing"
+	"github.com/mmc/all-share/internal/rendezvous/registry"
+	allsignal "github.com/mmc/all-share/internal/rendezvous/signal"
+	"github.com/mmc/all-share/internal/rendezvous/turnsvc"
 	"github.com/mmc/all-share/shared/idkey"
 	"github.com/mmc/all-share/shared/protocol"
 )

@@ -1,17 +1,17 @@
 {
-  "agentEpk": "uYxxUPx80QkPDOsZWs7Z0FJFz6gJ3nxFPgR5-lAbQ0k",
-  "agentIdPub": "HpE_9Fl7sB2dFu3ERc0Zkf26EikjihWXx634AZ2i9AY",
-  "clientEpk": "ZSZrO2EmX03FHLD6lsvH8g13Gjdi9NBuz2JPeDDriGw",
-  "clientIdPub": "9oUnwwHCes5ezDz_ewV2fX11x6FzgBPD11g3EDb6pKI",
+  "agentEpk": "9AIDjYWzZRw3Wu9aoAsX2k4XWApbNMraRuBOgnnfWko",
+  "agentIdPub": "OIyrO08pfPsZjr4b8dGD_6mn4p1I6DrCr_qLH0z9dpM",
+  "clientEpk": "_7iQfjHLepEgmZDCdnhwkJxLWmojlIPc4KGYFXp4-yM",
+  "clientIdPub": "k89o_D8i61Guzh9whzUYVa9PvNDYDHug6h89LShOd4c",
   "clientLabel": "Chromebook",
   "code": "K7M2Q9XR4TVZ",
   "codeId": "HjXjnyzv3ZV69c5thRGMPg",
-  "confirmAgent": "hbHqUXUYoXb8WHjcKwXvJ9PNmBkHy_9jA0TL1mQAvTg",
-  "confirmClient": "Rg2KXfNe7b1VXB5GJG1auPgkU22Vm5DNtOVIGBDwG6U",
+  "confirmAgent": "BFbkmvNIPecIAHB2rZlMH8J5Cd8uP7auMwyrYoJtAcs",
+  "confirmClient": "dS1UgcU7-ipAmWnV6nCRXv0kJVO7Y2bemxRnsvEe4us",
   "deviceName": "My Gaming PC",
-  "master": "h4ASMYQwdC41Gk791mo4JjyJaLeiDQCnRGX_hJJ0BOo",
+  "master": "DRp9oeGtIrQWvxpJQl7qKlaGB2oXvH8t0wFamXXaCPs",
   "password": "EbvsryHJn55sRhoDQyMW5lAuScGlBR7lh8V0mIfYXv0",
   "salt": "AQIDBAUGBwgJCgsMDQ4PEA",
-  "shared": "hVuG7wHc6Ew4U-Ttkc7ACMh5EQD8bkunNULR5Zzf-Tk",
-  "transcriptHash": "ELJw82b8cxZGCoh2UZRaM7UcqZSGIS1a-Y6JVmy0Z28"
+  "shared": "cxopQRTnv6nMBa0JuCsJb9-_-wNDLK41blazJDWwvVA",
+  "transcriptHash": "PFvqGgPMkdOBXaHVys_Ytt11SKeN1xN-8g7d6R72nKk"
 }
