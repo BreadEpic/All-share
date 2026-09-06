@@ -1,0 +1,23 @@
+# Build output
+/dist/
+/build/
+*.exe
+*.dll
+*.a
+*.o
+*.obj
+*.syso
+
+# Go
+/vendor/
+
+# Node (dev-only tooling for tests; the client itself needs no build step)
+node_modules/
+package-lock.json
+
+# Local state
+*.log
+/agent/allshare-agent
+/server/allshare-server
+.scratch/
+/test/e2e/artifacts/
