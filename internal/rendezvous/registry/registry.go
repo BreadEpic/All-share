@@ -339,6 +339,19 @@ func (r *Registry) Forget(deviceID, clientID string) error {
 	return nil
 }
 
+// Reset drops every device.
+//
+// This is what losing the server's storage looks like — a free hosting tier
+// replacing the container, a fresh deploy, a wiped disk. It is exposed so that
+// recovery from it can be tested rather than assumed: the agent re-sends its
+// registration on reconnect, so the state comes back without anyone re-pairing.
+func (r *Registry) Reset() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.devices = map[string]*Device{}
+	r.markDirty()
+}
+
 // Count reports how many devices are registered.
 func (r *Registry) Count() int {
 	r.mu.RLock()

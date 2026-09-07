@@ -751,6 +751,65 @@ func TestAgentReconnectReplacesStaleConnection(t *testing.T) {
 	}
 }
 
+// TestServerStateIsRebuiltByTheAgent covers running the rendezvous somewhere
+// with disposable storage — a free hosting tier, a container that is replaced
+// on every deploy.
+//
+// Losing the server's device list must not cost the user their pairings. It
+// does not, because the agent re-sends its own list on every registration and
+// the PC is the authoritative copy: the server's file is a cache of what the
+// agent already knows. If that ever stopped being true, the symptom would be
+// users being told to pair again after a deploy they never saw, which is the
+// kind of thing that gets blamed on anything but the real cause.
+func TestServerStateIsRebuiltByTheAgent(t *testing.T) {
+	h := newHarness(t)
+	client := h.dial(protocol.RoleClient)
+	agent := h.dial(protocol.RoleAgent)
+
+	// The PC registers, naming the client it is paired with.
+	if err := agent.client.Send(protocol.MsgAgentRegister, protocol.AgentRegister{
+		Name: "PC", PairedClients: []string{client.id()},
+	}); err != nil {
+		t.Fatalf("register: %v", err)
+	}
+	waitFor(t, func() bool { return h.reg.Count() == 1 })
+
+	if _, err := client.client.Request(ctxT(t), protocol.MsgConnect,
+		protocol.ConnectBody{Target: agent.id()}); err != nil {
+		t.Fatalf("a paired client could not connect: %v", err)
+	}
+
+	// Wipe every trace of the device from the server, exactly as losing the
+	// disk would.
+	if err := h.reg.Forget(agent.id(), client.id()); err != nil {
+		t.Fatalf("forget: %v", err)
+	}
+	h.reg.Reset()
+	if h.reg.Count() != 0 {
+		t.Fatalf("the registry still holds %d devices after being reset", h.reg.Count())
+	}
+
+	// With the server empty, the client is refused — the server genuinely lost
+	// the state, so this is not a test that passes for the wrong reason.
+	_, err := client.client.Request(ctxT(t), protocol.MsgConnect, protocol.ConnectBody{Target: agent.id()})
+	if err == nil {
+		t.Fatal("the server introduced a device it no longer knew about")
+	}
+
+	// The agent re-registers, as it does on every reconnect.
+	if err := agent.client.Send(protocol.MsgAgentRegister, protocol.AgentRegister{
+		Name: "PC", PairedClients: []string{client.id()},
+	}); err != nil {
+		t.Fatalf("re-register: %v", err)
+	}
+	waitFor(t, func() bool { return h.reg.Count() == 1 })
+
+	if _, err := client.client.Request(ctxT(t), protocol.MsgConnect,
+		protocol.ConnectBody{Target: agent.id()}); err != nil {
+		t.Fatalf("the pairing did not survive the server losing its storage: %v", err)
+	}
+}
+
 func TestUnknownMessageTypesAreIgnored(t *testing.T) {
 	h := newHarness(t)
 	client := h.dial(protocol.RoleClient)

@@ -65,7 +65,7 @@ func main() {
 
 func run() error {
 	var cfg config
-	flag.StringVar(&cfg.listen, "listen", envOr("ALLSHARE_LISTEN", ":8443"), "HTTP listen address for signalling")
+	flag.StringVar(&cfg.listen, "listen", defaultListen(), "HTTP listen address for signalling")
 	flag.StringVar(&cfg.dataDir, "data", envOr("ALLSHARE_DATA", "./data"), "directory for the device registry and server key")
 	flag.StringVar(&cfg.realm, "realm", envOr("ALLSHARE_REALM", "allshare"), "TURN realm")
 	flag.StringVar(&cfg.turnListen, "turn-listen", envOr("ALLSHARE_TURN_LISTEN", ""), "UDP address for the embedded relay, e.g. :3478 (empty disables it)")
@@ -257,6 +257,24 @@ func newLogger(level string, asJSON bool) *slog.Logger {
 		return slog.New(slog.NewJSONHandler(os.Stderr, opts))
 	}
 	return slog.New(slog.NewTextHandler(os.Stderr, opts))
+}
+
+// defaultListen picks the address to bind when none is given.
+//
+// Hosting platforms tell a program which port to use through $PORT and route
+// public traffic to it, so honouring that is the difference between "deploys in
+// one step" and "starts, binds the wrong port, and is reported as unhealthy".
+// An explicit -listen or ALLSHARE_LISTEN still wins; this only fills the gap.
+func defaultListen() string {
+	if addr := os.Getenv("ALLSHARE_LISTEN"); addr != "" {
+		return addr
+	}
+	if port := strings.TrimSpace(os.Getenv("PORT")); port != "" {
+		// Bind every interface: inside a container, binding loopback would make
+		// the service unreachable from outside it.
+		return ":" + strings.TrimPrefix(port, ":")
+	}
+	return ":8443"
 }
 
 func envOr(key, fallback string) string {

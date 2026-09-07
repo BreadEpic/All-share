@@ -149,12 +149,22 @@
     <h3>Can this network reach out?</h3>
     <div id="group-network"></div>
     <div class="server">
-      <label for="server-addr">Optional — test reaching your own ALL SHARE service</label>
+      <label for="reach-host">Can this device reach a particular website?</label>
+      <div class="server__row">
+        <input type="text" id="reach-host" placeholder="example.com" spellcheck="false" autocapitalize="off" autocorrect="off">
+        <button id="reach-test">Check</button>
+      </div>
+      <div class="hint">Useful before you set up a service somewhere: check the host is reachable from this device first, rather than finding out afterwards.</div>
+      <div id="group-reach"></div>
+    </div>
+
+    <div class="server">
+      <label for="server-addr">Test reaching your own ALL SHARE service</label>
       <div class="server__row">
         <input type="text" id="server-addr" placeholder="wss://your-service.example.com/rv" spellcheck="false" autocapitalize="off" autocorrect="off">
         <button id="server-test">Test it</button>
       </div>
-      <div class="hint">Only fill this in if someone gave you a service address. Leave it blank otherwise.</div>
+      <div class="hint">Only fill this in once you have a service address. Leave it blank otherwise.</div>
       <div id="group-server"></div>
     </div>
   </div>
@@ -388,6 +398,44 @@ document.getElementById('server-test').addEventListener('click', function () {
   ws.onerror = function () { finish('fail', 'Blocked', 'Could not reach it — blocked by this network, or the address is wrong or offline.'); };
   ws.onclose = function () { finish('fail', 'Blocked', 'The connection closed before it opened — usually a network block.'); };
   setTimeout(function () { finish('fail', 'Timed out', 'No answer in ten seconds. Most likely blocked by this network.'); }, 10000);
+});
+
+// --- "can I reach this host at all" -------------------------------------
+// A no-cors request cannot read the response — that is the point, and it is not
+// needed. What it can tell apart is "the connection was made" from "the
+// connection was refused", which is exactly the question being asked.
+document.getElementById('reach-test').addEventListener('click', function () {
+  var raw = document.getElementById('reach-host').value.trim();
+  var group = document.getElementById('group-reach');
+  group.innerHTML = '';
+  if (!raw) {
+    makeRow(group, 'Nothing to check', '').set('warn', 'Empty', 'Type a website address first, such as example.com');
+    return;
+  }
+  var url;
+  try {
+    url = new URL(/^https?:\/\//i.test(raw) ? raw : 'https://' + raw);
+  } catch (e) {
+    makeRow(group, 'Not an address', raw).set('fail', 'Invalid', 'That does not look like a website address.');
+    return;
+  }
+  var r = makeRow(group, 'Reaching ' + url.hostname, 'Trying…');
+  var settled = false;
+  var timer = setTimeout(function () {
+    if (settled) return;
+    settled = true;
+    r.set('fail', 'Blocked', 'No answer within ten seconds. On this device that almost always means blocked.');
+  }, 10000);
+
+  fetch(url.origin, { mode: 'no-cors', cache: 'no-store' }).then(function () {
+    if (settled) return;
+    settled = true; clearTimeout(timer);
+    r.set('pass', 'Reachable', 'This device connected to ' + url.hostname + ' successfully.');
+  }).catch(function () {
+    if (settled) return;
+    settled = true; clearTimeout(timer);
+    r.set('fail', 'Blocked', 'This device could not connect to ' + url.hostname + '. Either it is blocked here, or the address is wrong.');
+  });
 });
 
 // ---- verdict ------------------------------------------------------------
