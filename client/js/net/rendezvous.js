@@ -90,6 +90,20 @@
 
   Rendezvous.prototype._openSocket = function () {
     if (!this._shouldRun || !this.url) return;
+
+    // The address is checked again here, not just in the settings screen: it
+    // can also arrive from a shipped config.js, and an unencrypted one would
+    // put the SDP and the relay credentials on the wire in the clear. Refusing
+    // once and staying refused is right — retrying cannot fix a bad address.
+    const problem = AS.Util.serviceAddressProblem(this.url);
+    if (problem) {
+      Log.warn('refusing to use the service address: ' + problem);
+      this.lastError = { code: 'bad_address', message: problem };
+      this._shouldRun = false;
+      this._setState('failed', this.lastError);
+      return;
+    }
+
     if (this._ws) {
       try { this._ws.close(); } catch (err) { /* ignore */ }
       this._ws = null;

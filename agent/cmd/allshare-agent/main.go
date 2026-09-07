@@ -39,6 +39,7 @@ import (
 	"github.com/mmc/all-share/internal/wake"
 	"github.com/mmc/all-share/shared/idkey"
 	"github.com/mmc/all-share/shared/pair"
+	"github.com/mmc/all-share/shared/rvclient"
 )
 
 // Version is stamped at build time with -ldflags "-X main.Version=…".
@@ -430,6 +431,15 @@ func cmdConfig(args []string) error {
 	audio := flags.String("audio", "", "on or off")
 	if err := flags.Parse(args); err != nil {
 		return err
+	}
+
+	// Reject an unencrypted service address here, where the person setting it
+	// is watching, rather than at first connect where the message would be
+	// buried in a service log.
+	if *service != "" {
+		if err := rvclient.ValidateEndpoint(*service); err != nil {
+			return err
+		}
 	}
 
 	dir := *dataDir

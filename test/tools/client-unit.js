@@ -54,6 +54,26 @@ group('util', () => {
   eq('formatMs unknown', U.formatMs(-1), '—');
   eq('formatDuration minutes', U.formatDuration(900), 'about 15 minutes');
 
+  // Service address policy. Signalling carries the SDP and the relay
+  // credentials, so an unencrypted address is refused unless the service is on
+  // the local network, where it cannot leave the LAN.
+  ok('wss is accepted', U.serviceAddressProblem('wss://rv.example.com/rv') === '');
+  ok('ws to a public host is refused', U.serviceAddressProblem('ws://rv.example.com/rv') !== '');
+  ok('ws to loopback is accepted', U.serviceAddressProblem('ws://127.0.0.1:8080/rv') === '');
+  ok('ws to localhost is accepted', U.serviceAddressProblem('ws://localhost:8080/rv') === '');
+  ok('ws to a LAN address is accepted', U.serviceAddressProblem('ws://192.168.1.10:8080/rv') === '');
+  ok('ws to 10/8 is accepted', U.serviceAddressProblem('ws://10.1.2.3/rv') === '');
+  ok('ws to 172.16/12 is accepted', U.serviceAddressProblem('ws://172.20.0.1/rv') === '');
+  ok('ws to 172.15 is refused', U.serviceAddressProblem('ws://172.15.0.1/rv') !== '');
+  ok('ws to 172.32 is refused', U.serviceAddressProblem('ws://172.32.0.1/rv') !== '');
+  ok('ws to IPv6 loopback is accepted', U.serviceAddressProblem('ws://[::1]:8080/rv') === '');
+  ok('ws to a public IPv6 is refused', U.serviceAddressProblem('ws://[2001:db8::1]:8080/rv') !== '');
+  ok('http is refused', U.serviceAddressProblem('http://rv.example.com/rv') !== '');
+  ok('nonsense is refused', U.serviceAddressProblem('not an address') !== '');
+  // A hostname that merely starts with a private-looking digit run is not a
+  // private address; only a full dotted quad counts.
+  ok('a host named 10.example.com is refused', U.serviceAddressProblem('ws://10.example.com/rv') !== '');
+
   // Listeners must actually detach; a session can be entered many times.
   let fired = 0;
   const target = { _h: [], addEventListener(t, h) { this._h.push([t, h]); }, removeEventListener(t, h) { this._h = this._h.filter((e) => e[1] !== h); } };

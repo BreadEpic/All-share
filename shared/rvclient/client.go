@@ -19,6 +19,9 @@ import (
 	"log/slog"
 	"math"
 	"math/rand"
+	"net"
+	"net/url"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -85,10 +88,65 @@ type Config struct {
 	DialOptions *websocket.DialOptions
 }
 
+// ValidateEndpoint rejects a rendezvous address that would carry signalling in
+// the clear.
+//
+// Signalling is not "just metadata": it carries SDP, which lists every ICE
+// candidate (your local and public addresses) and the TURN credentials minted
+// for the session. Sent over ws://, all of that is readable by anyone on the
+// path, and while the end-to-end signatures still stop a tamperer from
+// substituting a DTLS fingerprint, confidentiality is simply gone.
+//
+// So wss:// is required — with one carve-out. A rendezvous self-hosted on the
+// same LAN as the PCs is a legitimate deployment, and obtaining a publicly
+// trusted certificate for 192.168.1.10 is not something we can reasonably
+// demand. Plain ws:// is therefore accepted for loopback and private-range
+// hosts only, where the traffic never leaves the local network. Everything
+// reachable from the internet must be encrypted.
+func ValidateEndpoint(raw string) error {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return fmt.Errorf("allshare/rvclient: %q is not a valid address", raw)
+	}
+	switch u.Scheme {
+	case "wss":
+		return nil
+	case "ws":
+		if isLocalHost(u.Hostname()) {
+			return nil
+		}
+		return fmt.Errorf("allshare/rvclient: %q uses ws://, which is unencrypted; "+
+			"use wss:// (ws:// is allowed only for addresses on your own network)", raw)
+	default:
+		return fmt.Errorf("allshare/rvclient: %q must start with wss://", raw)
+	}
+}
+
+// isLocalHost reports whether host names a machine that cannot be reached from
+// the internet: loopback, a private IPv4 range, link-local, unique-local IPv6,
+// or a .local / localhost name.
+func isLocalHost(host string) bool {
+	if host == "" {
+		return false
+	}
+	lower := strings.ToLower(host)
+	if lower == "localhost" || strings.HasSuffix(lower, ".localhost") || strings.HasSuffix(lower, ".local") {
+		return true
+	}
+	ip := net.ParseIP(host)
+	if ip == nil {
+		return false
+	}
+	return ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast()
+}
+
 // New constructs a Client. It does not connect; call Run.
 func New(cfg Config) (*Client, error) {
 	if cfg.URL == "" {
 		return nil, errors.New("allshare/rvclient: no rendezvous URL configured")
+	}
+	if err := ValidateEndpoint(cfg.URL); err != nil {
+		return nil, err
 	}
 	if !cfg.Identity.Valid() {
 		return nil, errors.New("allshare/rvclient: no device identity")

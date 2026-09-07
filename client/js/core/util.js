@@ -344,5 +344,57 @@ window.AllShare = window.AllShare || {};
     return 'Browser';
   };
 
+  /**
+   * Report whether a host is on the local network, and so unreachable from the
+   * internet.
+   *
+   * This decides the one case where an unencrypted ws:// service address is
+   * allowed. Someone running the service on their own LAN cannot obtain a
+   * publicly trusted certificate for 192.168.1.10, and demanding one would just
+   * teach them to turn the check off. Everything reachable from outside must
+   * use wss://, because signalling carries the SDP — every address your devices
+   * know about — and the relay credentials minted for the session.
+   */
+  Util.isLocalAddress = function (hostname) {
+    const host = String(hostname || '').toLowerCase().replace(/^\[|\]$/g, '');
+    if (!host) return false;
+    if (host === 'localhost' || host.endsWith('.localhost') || host.endsWith('.local')) return true;
+    // IPv6 loopback, unique-local (fc00::/7) and link-local (fe80::/10).
+    if (host === '::1' || /^f[cd][0-9a-f]*:/.test(host) || /^fe[89ab][0-9a-f]*:/.test(host)) return true;
+    const v4 = host.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+    if (!v4) return false;
+    const parts = [Number(v4[1]), Number(v4[2]), Number(v4[3]), Number(v4[4])];
+    if (parts.some(function (n) { return n > 255; })) return false;
+    const a = parts[0], b = parts[1];
+    return a === 127                          // loopback
+      || a === 10                             // 10.0.0.0/8
+      || (a === 192 && b === 168)             // 192.168.0.0/16
+      || (a === 172 && b >= 16 && b <= 31)    // 172.16.0.0/12
+      || (a === 169 && b === 254);            // link-local
+  };
+
+  /**
+   * Report why a service address must be refused, or '' if it is acceptable.
+   * Kept next to isLocalAddress so the rule lives in exactly one place: the
+   * settings screen, the first-run screen and the connection code all call it.
+   */
+  Util.serviceAddressProblem = function (raw) {
+    let url;
+    try {
+      url = new URL(String(raw));
+    } catch (err) {
+      return 'That does not look like an address. It should look like wss://allshare.example.com/rv';
+    }
+    if (url.protocol !== 'wss:' && url.protocol !== 'ws:') {
+      return 'The address should start with wss://';
+    }
+    if (!url.hostname) return 'That address is missing a server name.';
+    if (url.protocol === 'ws:' && !Util.isLocalAddress(url.hostname)) {
+      return 'That address is not encrypted. It should start with wss:// unless the '
+        + 'service is on your own network.';
+    }
+    return '';
+  };
+
   AS.Util = Util;
 })(window.AllShare);

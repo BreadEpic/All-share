@@ -271,17 +271,21 @@
       idle: '',
       connecting: 'Connecting to the ALL SHARE service…',
       connected: '',
-      retrying: 'Not connected to the ALL SHARE service. Your PCs will appear when it comes back.'
+      retrying: 'Not connected to the ALL SHARE service. Your PCs will appear when it comes back.',
+      // 'failed' means retrying cannot help — the address itself is wrong or
+      // unsafe. The banner stays up until the address is changed.
+      failed: 'The ALL SHARE service address needs to be corrected in Settings.'
     };
     const message = messages[state] || '';
-    U.show(this.bannerEl, !!message && state === 'retrying');
+    U.show(this.bannerEl, !!message && (state === 'retrying' || state === 'failed'));
     if (this.bannerText) this.bannerText.textContent = detail && detail.message ? detail.message : message;
 
     if (this.footerStatus) {
       const label = state === 'connected'
         ? 'Connected to the ALL SHARE service'
         : state === 'connecting' ? 'Connecting…'
-        : state === 'retrying' ? 'Reconnecting…' : 'Not connected';
+        : state === 'retrying' ? 'Reconnecting…'
+        : state === 'failed' ? 'Service address needs attention' : 'Not connected';
       this.footerStatus.textContent = label +
         (AS.Identity.fingerprint ? ' · this device: ' + AS.Identity.fingerprint : '');
     }
@@ -302,18 +306,7 @@
 
   function validateServiceAddress(value) {
     if (!value) return 'Enter the address your PC showed you.';
-    const normalized = normalizeServiceAddress(value);
-    let url;
-    try {
-      url = new URL(normalized);
-    } catch (err) {
-      return 'That does not look like an address. It should look like wss://allshare.example.com/rv';
-    }
-    if (url.protocol !== 'wss:' && url.protocol !== 'ws:') {
-      return 'The address should start with wss://';
-    }
-    if (!url.hostname) return 'That address is missing a server name.';
-    return '';
+    return U.serviceAddressProblem(normalizeServiceAddress(value));
   }
 
   /**
