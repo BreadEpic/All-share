@@ -169,6 +169,26 @@ that says it could not.
 
 ---
 
+## Removing a device
+
+If you lose a device, or just want to stop using one, remove it **from the PC**:
+
+```
+allshare-agent status                     shows which devices are paired
+allshare-agent forget "Chromebook"        removes that one
+allshare-agent forget -all                removes all of them
+```
+
+It takes effect straight away — nothing to restart, and the removed device
+cannot connect again until you pair it afresh.
+
+This lives on the PC on purpose. If the device is lost, you no longer have it,
+so being able to remove it only *from* that device would be no use at all. You
+can also remove a PC from a device's own list in **Settings → General**, but
+that only tidies up that device's list; the PC is where the decision is made.
+
+---
+
 ## Waking your PC
 
 If your PC is asleep, its card shows **Offline** and a **Wake PC** button.

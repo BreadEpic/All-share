@@ -61,6 +61,7 @@ type stack struct {
 	server     *httptest.Server
 	serviceURL string
 	agent      *agentcore.Agent
+	cfg        *config.Config
 	recorder   *agentinput.Recorder
 	clipboard  *clipboard.Recorder
 	source     *testsource.Provider
@@ -135,7 +136,7 @@ func startStack(t *testing.T) *stack {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	s := &stack{
-		t: t, server: server, serviceURL: serviceURL, agent: instance,
+		t: t, server: server, serviceURL: serviceURL, agent: instance, cfg: cfg,
 		recorder: recorder, clipboard: clip, source: provider,
 		deviceID: identity.Public().String(), cancel: cancel,
 	}
@@ -612,6 +613,29 @@ func TestFullSession(t *testing.T) {
 		t.Logf("cursor: %d shape(s) received, %d pixels painted locally at (%d,%d)",
 			result.Cursor.Shapes, result.Cursor.PaintedPixels,
 			result.Cursor.State.X, result.Cursor.State.Y)
+	}
+
+	// --- Forgetting a device is final, and takes effect at once. ---
+	//
+	// This is the recovery path for a lost or stolen client, and it has to work
+	// from the PC: removing a device through the client would be useless in
+	// exactly the case that matters, because the thief has the client. It also
+	// has to take effect on the running agent rather than at the next restart —
+	// "reboot your PC to lock out the thief" is not an answer.
+	paired := s.cfg.PairedIDs()
+	if len(paired) != 1 {
+		t.Fatalf("expected exactly one paired device after the session, got %d", len(paired))
+	}
+	if err := s.cfg.RemovePairedClient(paired[0]); err != nil {
+		t.Fatalf("forget the paired device: %v", err)
+	}
+	if s.cfg.IsPaired(paired[0]) {
+		t.Error("the agent still accepts a device that was just forgotten")
+	}
+	if count := s.agent.Status().PairedCount; count != 0 {
+		t.Errorf("the running agent still reports %d paired devices after the removal", count)
+	} else {
+		t.Log("unpairing: the running agent dropped the device immediately, no restart needed")
 	}
 
 	// --- Latency, measured rather than asserted. ---

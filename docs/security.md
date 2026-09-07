@@ -4,10 +4,10 @@ This document explains what ALL SHARE protects, what it does not protect, and
 exactly how each protection works. The first section is written for anyone; the
 sections after it are for people who want to check the claims.
 
-If you find a problem, the fastest thing you can do is unpair the device
-(**Settings → Devices → Forget**) and stop the ALL SHARE service on the PC
-(`sc stop AllShareAgent` from an administrator command prompt). Both take
-effect immediately.
+If you find a problem, the fastest thing you can do is remove the device from
+the PC (`allshare-agent forget "<name>"`) and stop the service
+(`net stop ALLShare` from an administrator command prompt). Both take effect
+immediately, and neither needs the server.
 
 ---
 
@@ -247,6 +247,13 @@ Check 2 is the one that counts. A compromised server can skip check 1; it cannot
 skip check 2, because that decision is made on your PC against a list only your
 PC maintains. Unpairing on the PC is therefore final: no server-side state can
 re-authorise a forgotten device.
+
+That is why removal lives on the PC — `allshare-agent forget` — and not only in
+the client. The case that matters is a lost or stolen device, and in that case
+the thief has the client; a revocation you can only perform from the device you
+no longer have is not a revocation. The running service picks the change up
+immediately, so there is no window between removing a device and restarting
+anything.
 
 The reverse direction is constrained too. A client can only remove *itself* from
 a PC's paired list — the `forget` handler ignores any device ID in the request
@@ -606,15 +613,28 @@ any rendezvous design; it is why the LAN path exists.
 **Looked for:** memory-safety and resource exhaustion from a paired-but-hostile
 peer.
 
-**Found:** Go's memory safety covers the protocol surface. Every fixed-size
-message checks its length before indexing. Variable-length messages (clipboard,
-cursor shape) are capped. Cursor PNGs are decoded by Go's standard `image/png`,
-which is memory-safe and size-limited. The C++ layer never parses network data —
-it only receives capture parameters that the Go layer has already validated
-against the enumerated monitor list and a fixed range of encoder settings.
+**Found, agent side:** Go's memory safety covers the protocol surface. Every
+fixed-size message checks its length before indexing; variable-length messages
+are capped by `MaxCtrlMessage` (192 KB) and, for clipboard, `MaxClipboardBytes`
+(64 KB). The C++ layer never parses network data — it receives capture
+parameters that the Go layer has already validated against the enumerated
+monitor list and a fixed range of encoder settings.
 
-The one place hostile data reaches C++ is not present: audio and video flow
-*outward* only. There is no decoder in the agent.
+The structural point is that **the agent contains no decoder at all**. Video,
+audio and cursor bitmaps flow outward only: the agent encodes H.264, encodes
+Opus and encodes PNG. A hostile client cannot reach an image parser, a video
+parser or an audio parser, because there is none to reach. That is worth more
+than any amount of hardening a decoder would have needed.
+
+**Found, client side:** the client *does* decode — the cursor PNG the agent
+sends. It goes to the browser's own image decoder, the same hardened one that
+renders every image on the web and the single most attacked piece of code in a
+browser. Its input is bounded by the control-message cap before it gets there,
+the shape cache is capped at 64 entries with the oldest evicted and its Blob URL
+revoked, and a PNG that fails to decode revokes its URL and is dropped. A
+malicious *agent* is in any case a machine the user paired with deliberately and
+is streaming their screen from — the cursor is not the interesting attack
+surface at that point.
 
 **Status:** OK.
 
@@ -703,9 +723,9 @@ mistaken.
 
 | Situation | Action |
 |---|---|
-| A device was lost or stolen | On the PC: **ALL SHARE → Devices → Forget**. Effective immediately; no server involvement needed |
+| A device was lost or stolen | On the PC: `allshare-agent forget "Chromebook"` (or `-all`). `allshare-agent status` lists what is paired. Effective immediately on the running service — no restart, no server involvement |
 | You suspect the server is compromised | Nothing to do for confidentiality — it never had your keys. Point the agent and clients at a different server, or run your own ([deployment.md](deployment.md)) |
-| You suspect the PC is compromised | Stop the service (`sc stop AllShareAgent`), then treat it as a full machine compromise. ALL SHARE cannot help here |
+| You suspect the PC is compromised | Stop the service (`net stop ALLShare`), then treat it as a full machine compromise. ALL SHARE cannot help here |
 | A pairing code was seen by someone | It expires in three minutes and dies after one wrong attempt. If it was *used*, unpair the unexpected device |
 | You want to revoke everything | Delete `C:\ProgramData\ALL SHARE\` and restart the service. A new identity is generated and every existing pairing is void |
 

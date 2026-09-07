@@ -63,6 +63,8 @@ func main() {
 		err = cmdPair(args)
 	case "status":
 		err = cmdStatus(args)
+	case "forget", "unpair":
+		err = cmdForget(args)
 	case "config":
 		err = cmdConfig(args)
 	case "service", "host", "install", "uninstall":
@@ -89,6 +91,7 @@ Usage:
   allshare-agent run          Run in the foreground (setup and troubleshooting)
   allshare-agent pair         Show a pairing code and wait for a device
   allshare-agent status       Show what this PC is doing
+  allshare-agent forget       Remove a paired device from this PC
   allshare-agent config       Show or change settings
   allshare-agent service      Run as a Windows service
   allshare-agent host         Run the desktop worker (started by the service)
@@ -403,7 +406,10 @@ func cmdStatus(args []string) error {
 		if !client.LastSeen.IsZero() {
 			last = "last connected " + client.LastSeen.Local().Format("2 Jan 15:04")
 		}
-		fmt.Printf("      • %-24s %s\n", client.Label, last)
+		fmt.Printf("      • %-24s %-14s %s\n", client.Label, clientFingerprint(client.ID), last)
+	}
+	if len(cfg.PairedClients) > 0 {
+		fmt.Printf("\n  To remove one:   allshare-agent forget <name or code>\n")
 	}
 	fmt.Printf("  Settings file:   %s\n", cfg.Path())
 	fmt.Printf("  Wake check-in:   %s\n", describeCheckIn(cfg))
@@ -418,6 +424,110 @@ func describeCheckIn(cfg *config.Config) string {
 		return "off"
 	}
 	return fmt.Sprintf("every %d minutes", cfg.WakeCheckInMinutes)
+}
+
+// clientFingerprint renders a paired client's key the way its own screen does,
+// so a user can match the two by eye.
+func clientFingerprint(id string) string {
+	pub, err := idkey.ParsePublic(id)
+	if err != nil {
+		return "unreadable"
+	}
+	return pub.Fingerprint()
+}
+
+// cmdForget removes a paired device from this PC.
+//
+// This is the recovery path for a lost or stolen device, so it has to work from
+// the PC and only from the PC. Removing a device through the client would be
+// useless in exactly the case that matters: the thief has the client.
+//
+// The removal is final and needs no server. The agent checks its own paired
+// list on every connection request, so a forgotten device is refused even if
+// the rendezvous still believes in it.
+func cmdForget(args []string) error {
+	flags := flag.NewFlagSet("forget", flag.ExitOnError)
+	dataDir := flags.String("data", "", "directory for settings and identity")
+	all := flags.Bool("all", false, "remove every paired device")
+	if err := flags.Parse(args); err != nil {
+		return err
+	}
+
+	dir := *dataDir
+	if dir == "" {
+		resolved, err := config.Dir()
+		if err != nil {
+			return err
+		}
+		dir = resolved
+	}
+	path := filepath.Join(dir, "config.json")
+	cfg, err := config.Load(path)
+	if err != nil {
+		return err
+	}
+	cfg.SetPath(path)
+
+	clients := cfg.PairedClients
+	if len(clients) == 0 {
+		fmt.Println("This PC is not paired with any devices.")
+		return nil
+	}
+
+	if *all {
+		for _, client := range clients {
+			if err := cfg.RemovePairedClient(client.ID); err != nil {
+				return err
+			}
+		}
+		fmt.Printf("Removed all %d devices. None of them can connect to this PC any more.\n", len(clients))
+		return nil
+	}
+
+	target := strings.TrimSpace(strings.Join(flags.Args(), " "))
+	if target == "" {
+		fmt.Println("Which device? This PC is paired with:")
+		fmt.Println()
+		for _, client := range clients {
+			fmt.Printf("  %-24s %s\n", client.Label, clientFingerprint(client.ID))
+		}
+		fmt.Println()
+		fmt.Println("Run: allshare-agent forget \"<name>\"   (or the code beside it)")
+		fmt.Println("     allshare-agent forget -all")
+		return nil
+	}
+
+	// Match on the name or the fingerprint, either as the user sees it or with
+	// the dashes left out, because that is how it will be typed.
+	normalized := strings.ToUpper(strings.ReplaceAll(target, "-", ""))
+	var matches []config.PairedClient
+	for _, client := range clients {
+		fingerprint := strings.ReplaceAll(clientFingerprint(client.ID), "-", "")
+		if strings.EqualFold(client.Label, target) || fingerprint == normalized {
+			matches = append(matches, client)
+		}
+	}
+	if len(matches) == 0 {
+		return fmt.Errorf("no paired device is called %q. Run \"allshare-agent forget\" to see the list", target)
+	}
+	// Two devices can share a label — "Chromebook" twice is entirely normal —
+	// and removing the wrong one silently would be worse than refusing.
+	if len(matches) > 1 {
+		fmt.Printf("More than one device is called %q:\n\n", target)
+		for _, client := range matches {
+			fmt.Printf("  %-24s %s\n", client.Label, clientFingerprint(client.ID))
+		}
+		fmt.Println("\nRun the command again with the code instead of the name.")
+		return nil
+	}
+
+	if err := cfg.RemovePairedClient(matches[0].ID); err != nil {
+		return err
+	}
+	fmt.Printf("Removed %s (%s). It can no longer connect to this PC.\n",
+		matches[0].Label, clientFingerprint(matches[0].ID))
+	fmt.Println("Pair it again at any time with: allshare-agent pair")
+	return nil
 }
 
 func cmdConfig(args []string) error {
