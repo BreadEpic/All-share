@@ -25,3 +25,4 @@ package-lock.json
 # Native build output
 /agent/native/build/
 /dist/
+/.deps/

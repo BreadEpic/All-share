@@ -16,7 +16,7 @@ package capture
 // and a class of "it works on my machine" failure; -Wl,-Bstatic around -lstdc++
 // is what actually forces the archive, because the -static-libstdc++ driver
 // option is a g++ flag and cgo links through gcc.
-#cgo LDFLAGS: -L${SRCDIR}/../../agent/native/build -lallshare_capture
+#cgo LDFLAGS: -L${SRCDIR}/../../agent/native/build -lallshare_capture -lopus
 #cgo LDFLAGS: -Wl,-Bstatic -lstdc++ -Wl,-Bdynamic
 #cgo LDFLAGS: -ld3d11 -ldxgi -lmfplat -lmfuuid -lmf -lole32 -loleaut32 -luuid -lwinmm
 #cgo LDFLAGS: -static-libgcc
@@ -175,6 +175,10 @@ func (p *WindowsProvider) Open(opts Options) (Source, error) {
 		monitors: p.Monitors(),
 	}
 	source.readInfo()
+	if opts.AudioEnabled {
+		source.startAudio(128000)
+		source.readInfo()
+	}
 
 	p.mu.Lock()
 	p.sessions = append(p.sessions, source)
@@ -211,10 +215,13 @@ type windowsSource struct {
 	provider *WindowsProvider
 	log      *slog.Logger
 
-	frames chan Frame
-	cursor chan CursorUpdate
-	done   chan struct{}
-	wg     sync.WaitGroup
+	frames      chan Frame
+	cursor      chan CursorUpdate
+	audio       chan AudioFrame
+	audioHandle *C.as_audio
+	hasAudio    bool
+	done        chan struct{}
+	wg          sync.WaitGroup
 
 	closeOnce sync.Once
 	closed    atomic.Bool
@@ -225,8 +232,69 @@ type windowsSource struct {
 }
 
 func (s *windowsSource) Frames() <-chan Frame        { return s.frames }
-func (s *windowsSource) Audio() <-chan AudioFrame    { return nil }
+func (s *windowsSource) Audio() <-chan AudioFrame    { return s.audio }
 func (s *windowsSource) Cursor() <-chan CursorUpdate { return s.cursor }
+
+// startAudio opens system audio capture alongside the video pipeline.
+//
+// Audio is a separate handle on purpose: it should keep playing across a
+// display change or a capture restart, and muting should stop the capture
+// entirely rather than encode sound nobody is listening to.
+func (s *windowsSource) startAudio(bitrate int) {
+	if C.as_audio_available() == 0 {
+		s.log.Info("this build of ALL SHARE has no audio support")
+		return
+	}
+	errBuf := make([]C.char, C.AS_MAX_ERROR)
+	handle := C.as_audio_open(C.int32_t(bitrate), &errBuf[0], C.int32_t(len(errBuf)))
+	if handle == nil {
+		// Sound is a convenience; losing it must not cost the user their
+		// session, so this is reported and the video stream carries on.
+		s.log.Warn("sound is unavailable", "reason", C.GoString(&errBuf[0]))
+		return
+	}
+	s.audioHandle = handle
+	s.audio = make(chan AudioFrame, 8)
+	s.hasAudio = true
+	s.wg.Add(1)
+	go s.pumpAudio()
+}
+
+func (s *windowsSource) pumpAudio() {
+	defer s.wg.Done()
+	defer close(s.audio)
+
+	// A 20 ms Opus frame arrives every 20 ms; polling at 5 ms keeps latency
+	// well under one frame without spinning.
+	ticker := time.NewTicker(5 * time.Millisecond)
+	defer ticker.Stop()
+
+	var frame C.as_audio_frame
+	for {
+		select {
+		case <-s.done:
+			return
+		case <-ticker.C:
+		}
+		for C.as_audio_next(s.audioHandle, &frame) == 1 {
+			if frame.size <= 0 || frame.data == nil {
+				continue
+			}
+			out := AudioFrame{
+				Data:       C.GoBytes(unsafe.Pointer(frame.data), C.int(frame.size)),
+				Duration:   time.Duration(frame.duration_us) * time.Microsecond,
+				CapturedAt: time.UnixMicro(int64(frame.capture_time_us)),
+			}
+			select {
+			case s.audio <- out:
+			case <-s.done:
+				return
+			default:
+				// Audio that has queued is audio that will arrive out of sync.
+			}
+		}
+	}
+}
 
 func (s *windowsSource) pumpFrames() {
 	defer s.wg.Done()
@@ -434,7 +502,7 @@ func (s *windowsSource) readInfo() {
 		FPS:            int(info.fps),
 		Monitors:       s.monitors,
 		ActiveMonitor:  int(info.monitor_id),
-		HasAudio:       false,
+		HasAudio:       s.hasAudio,
 		CursorEmbedded: info.cursor_embedded != 0,
 		SessionKind:    "desktop",
 	}
@@ -473,6 +541,10 @@ func (s *windowsSource) Close() error {
 		s.closed.Store(true)
 		close(s.done)
 		s.wg.Wait()
+		if s.audioHandle != nil {
+			C.as_audio_close(s.audioHandle)
+			s.audioHandle = nil
+		}
 		C.as_close(s.handle)
 		s.handle = nil
 	})

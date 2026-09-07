@@ -319,12 +319,13 @@ func launchInActiveSession() (*os.Process, error) {
 	}
 	defer primary.Close()
 
-	var environment uintptr
-	if ret, _, err := procCreateEnvBlock.Call(uintptr(unsafe.Pointer(&environment)),
-		uintptr(primary), 0); ret == 0 {
+	// The signed-in user's environment, so the helper sees the same PATH,
+	// TEMP and locale the user would.
+	var environment *uint16
+	if err := windows.CreateEnvironmentBlock(&environment, primary, false); err != nil {
 		return nil, fmt.Errorf("build the user's environment: %w", err)
 	}
-	defer procDestroyEnvBlock.Call(environment)
+	defer windows.DestroyEnvironmentBlock(environment)
 
 	executable, err := os.Executable()
 	if err != nil {
@@ -354,7 +355,7 @@ func launchInActiveSession() (*os.Process, error) {
 
 	err = windows.CreateProcessAsUser(primary, nil, commandLine, nil, nil, false,
 		createUnicodeEnvironment|createNoWindow,
-		(*uint16)(unsafe.Pointer(environment)), directory, &startup, &info)
+		environment, directory, &startup, &info)
 	if err != nil {
 		return nil, fmt.Errorf("start ALL SHARE in the signed-in session: %w", err)
 	}

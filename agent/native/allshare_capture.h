@@ -134,6 +134,15 @@ typedef struct as_stats {
 } as_stats;
 
 typedef struct as_capture as_capture;
+typedef struct as_audio as_audio;
+
+/* One encoded Opus packet. */
+typedef struct as_audio_frame {
+    const uint8_t* data;
+    int32_t        size;
+    int32_t        duration_us;
+    int64_t        capture_time_us;
+} as_audio_frame;
 
 /* Process-wide setup. Safe to call more than once. */
 int32_t as_initialize(char* err, int32_t err_len);
@@ -173,6 +182,29 @@ void    as_note_input(as_capture* session, uint32_t sequence);
 int32_t as_get_info(as_capture* session, as_info* out);
 int32_t as_get_stats(as_capture* session, as_stats* out);
 void    as_close(as_capture* session);
+
+/* ---------------------------------------------------------------------------
+ * Audio
+ *
+ * Captured with WASAPI loopback on the default playback device and encoded as
+ * Opus, which is the only audio codec every browser decodes over WebRTC.
+ *
+ * Audio is a separate handle from video on purpose: sound should keep playing
+ * across a display change or a capture restart, and a user who mutes should
+ * stop the capture entirely rather than encode sound nobody is listening to.
+ * ------------------------------------------------------------------------- */
+
+/* Reports whether this build has audio support compiled in. */
+int32_t as_audio_available(void);
+
+/* Opens system audio capture. Returns null and fills err on failure. */
+as_audio* as_audio_open(int32_t bitrate, char* err, int32_t err_len);
+
+/* Takes the next encoded packet. Returns 1 when one was written, else 0.
+ * The returned pointer stays valid until the next call on the same handle. */
+int32_t as_audio_next(as_audio* handle, as_audio_frame* out);
+
+void    as_audio_close(as_audio* handle);
 
 #ifdef __cplusplus
 }

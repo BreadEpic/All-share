@@ -33,6 +33,31 @@ const (
 	gmemMoveable  = 0x0002
 )
 
+// lockedText views memory returned by GlobalLock as UTF-16.
+//
+// Converting a uintptr to a pointer is normally unsound, because Go's garbage
+// collector may move the object it refers to. It is sound here, and only here,
+// because the address comes from the Windows global heap: that memory is not
+// managed by Go, cannot move, and stays valid until GlobalUnlock. Both Win32
+// pointer conversions in this package are funnelled through these two helpers
+// so there is one place to check that reasoning, and `go vet -unsafeptr=false`
+// is used for the Windows cross-build because the analyser cannot express it.
+func lockedText(address uintptr) string {
+	if address == 0 {
+		return ""
+	}
+	return windows.UTF16PtrToString((*uint16)(unsafe.Pointer(address))) //nolint:govet
+}
+
+// writeLocked copies UTF-16 units into memory returned by GlobalLock.
+func writeLocked(address uintptr, units []uint16) {
+	if address == 0 || len(units) == 0 {
+		return
+	}
+	dst := unsafe.Slice((*uint16)(unsafe.Pointer(address)), len(units)) //nolint:govet
+	copy(dst, units)
+}
+
 // Windows clipboard watching.
 //
 // There is a clipboard-listener window message, but it needs a message pump and
@@ -106,7 +131,7 @@ func (c *windowsClipboard) Read() (string, error) {
 
 	// Bounded so a hostile or enormous clipboard cannot be copied wholesale.
 	const maxUnits = MaxBytes / 2
-	text := windows.UTF16PtrToString((*uint16)(unsafe.Pointer(pointer)))
+	text := lockedText(pointer)
 	if len(text) > maxUnits {
 		text = text[:maxUnits]
 	}
@@ -132,8 +157,7 @@ func (c *windowsClipboard) Write(text string) error {
 		procGlobalFree.Call(handle)
 		return fmt.Errorf("allshare/clipboard: out of memory")
 	}
-	dst := unsafe.Slice((*uint16)(unsafe.Pointer(pointer)), len(units))
-	copy(dst, units)
+	writeLocked(pointer, units)
 	procGlobalUnlock.Call(handle)
 
 	if err := openClipboard(); err != nil {

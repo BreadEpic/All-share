@@ -38,6 +38,7 @@ import (
 	"github.com/mmc/all-share/internal/rendezvous/pairing"
 	"github.com/mmc/all-share/internal/rendezvous/registry"
 	"github.com/mmc/all-share/internal/rendezvous/signal"
+	"github.com/mmc/all-share/internal/session"
 	"github.com/mmc/all-share/shared/idkey"
 	"github.com/mmc/all-share/shared/protocol"
 )
@@ -239,9 +240,15 @@ type driverResult struct {
 // runDriver launches the browser and returns what it reported.
 func (s *stack) runDriver(t *testing.T, code string, extra ...string) driverResult {
 	t.Helper()
+	return s.runScript(t, "driver.js", code, extra...)
+}
+
+// runScript launches a named browser driver script.
+func (s *stack) runScript(t *testing.T, script, code string, extra ...string) driverResult {
+	t.Helper()
 
 	args := []string{
-		filepath.Join("driver.js"),
+		filepath.Join(script),
 		"--service=" + s.serviceURL,
 		"--code=" + code,
 		"--device=" + s.deviceID,
@@ -502,6 +509,98 @@ func runDriverExpectingFailure(t *testing.T, s *stack, code string) string {
 		t.Fatalf("the driver unexpectedly succeeded with an invalid code:\n%s", output)
 	}
 	return string(output)
+}
+
+// TestReconnectAndServiceOutage covers the two failures a user actually meets
+// on a real network: the session dropping, and the rendezvous going away.
+func TestReconnectAndServiceOutage(t *testing.T) {
+	skipUnlessEnabled(t)
+	s := startStack(t)
+
+	code, _, err := s.agent.BeginPairing()
+	if err != nil {
+		t.Fatalf("open a pairing window: %v", err)
+	}
+
+	result := s.runScript(t, "reconnect.js", code)
+	for _, step := range result.Steps {
+		t.Logf("  %-24s %s", step.Name, string(step.Detail))
+	}
+
+	names := map[string]bool{}
+	for _, step := range result.Steps {
+		names[step.Name] = true
+	}
+	for _, required := range []string{
+		"paired-and-online", "first-session", "session-dropped",
+		"reconnected", "video-after-reconnect", "service-stopped", "service-recovered",
+	} {
+		if !names[required] {
+			t.Errorf("the client never reached the %q stage", required)
+		}
+	}
+	t.Log("the client recovered a dropped session on its own, and kept streaming " +
+		"while the rendezvous was unreachable")
+}
+
+// TestQualityControllerDoesNotOscillate exercises the adaptive loop directly.
+//
+// Oscillation is the failure mode that matters: a stream that pumps between two
+// resolutions is more distracting than one that simply sits at the lower one.
+func TestQualityControllerDoesNotOscillate(t *testing.T) {
+	provider, err := testsource.New()
+	if err != nil {
+		t.Fatalf("test backend: %v", err)
+	}
+	t.Cleanup(func() { _ = provider.Close() })
+
+	source, err := provider.Open(capture.Options{FPS: 30, Bitrate: 4_000_000})
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	t.Cleanup(func() { _ = source.Close() })
+
+	controller := session.NewQualityController(session.QualityConfig{
+		Source: source,
+		Settings: session.Settings{
+			MaxBitrate: 25_000_000, MinBitrate: 600_000, StartBitrate: 4_000_000,
+			MaxFPS: 60, Preset: protocol.PresetBalanced,
+		},
+	})
+	controller.Apply(protocol.SetQuality{
+		Preset: protocol.PresetBalanced, Resolution: protocol.ResolutionAuto,
+		MaxFPS: 60, MaxKbps: 25_000, Adaptive: true,
+	})
+
+	// A bandwidth estimate that flaps around a ladder boundary must not produce
+	// a resolution change on every tick.
+	_, _, startRung := controller.Snapshot()
+	for i := 0; i < 40; i++ {
+		estimate := 5_900_000
+		if i%2 == 0 {
+			estimate = 6_100_000
+		}
+		controller.Update(estimate, nil)
+	}
+	_, _, endRung := controller.Snapshot()
+	if endRung != startRung {
+		t.Errorf("a flapping estimate moved the quality ladder from rung %d to %d", startRung, endRung)
+	}
+
+	// A sustained collapse must be followed, though, or the stream would simply
+	// stall instead of degrading.
+	bitrateBefore, _, _ := controller.Snapshot()
+	for i := 0; i < 40; i++ {
+		controller.Update(700_000, nil)
+	}
+	bitrateAfter, _, _ := controller.Snapshot()
+	if bitrateAfter >= bitrateBefore {
+		t.Errorf("a sustained bandwidth collapse did not lower the bitrate (%d then %d)",
+			bitrateBefore, bitrateAfter)
+	}
+	t.Logf("adaptive control: held rung %d through a flapping estimate, and dropped "+
+		"the bitrate from %d to %d kbps under a sustained collapse",
+		endRung, bitrateBefore/1000, bitrateAfter/1000)
 }
 
 func diff(a, b uint16) int {
