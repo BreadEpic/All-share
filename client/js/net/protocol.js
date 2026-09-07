@@ -57,6 +57,10 @@
 
   P.KEY_BITMAP_BYTES = 32;
   P.MAX_CTRL_MESSAGE = 192 * 1024;
+  // Must match protocol.MaxClipboardBytes in Go. This is a *byte* limit, not a
+  // character one: the agent measures UTF-8, so counting characters here would
+  // let anything non-Latin through and have it rejected at the far end.
+  P.MAX_CLIPBOARD_BYTES = 64 * 1024;
   P.WHEEL_TICKS_PER_NOTCH = 120;
 
   P.BUTTON_LEFT = 1;

@@ -480,12 +480,23 @@
 
   InputController.prototype._onPaste = function (event) {
     if (!this.settings.clipboardToRemote || !this.session) return;
-    const data = event.clipboardData && event.clipboardData.getData('text/plain');
-    if (!data) return;
+    const text = event.clipboardData && event.clipboardData.getData('text/plain');
+    if (!text) return;
     // Deliberately not prevented: the key event that triggered this paste has
     // already been forwarded, so the remote application receives Ctrl+V with
     // the right clipboard contents already in place.
-    const text = data.slice(0, P.MAX_CTRL_MESSAGE / 2);
+
+    // Refuse oversized content here rather than truncating it. Half a clipboard
+    // is worse than none: it pastes something that looks right and turns out
+    // not to be, somewhere the user has already moved on from. The limit is in
+    // bytes because that is what the agent enforces.
+    const bytes = U.utf8(text).length;
+    if (bytes > P.MAX_CLIPBOARD_BYTES) {
+      this.emit('clipboardTooLarge', { bytes: bytes, limit: P.MAX_CLIPBOARD_BYTES });
+      Log.warn('clipboard text of ' + bytes + ' bytes is over the ' +
+        P.MAX_CLIPBOARD_BYTES + '-byte limit and was not sent');
+      return;
+    }
     this.session.sendCtrl(P.TYPE_CLIPBOARD_IN, { text: text });
     this.emit('clipboardSent', { bytes: text.length });
     Log.info('sent ' + text.length + ' characters of clipboard text to the PC');

@@ -151,6 +151,13 @@
     input.on('clipboardSent', function (event) {
       self.hint('Sent ' + event.bytes + ' characters to your PC');
     });
+    input.on('clipboardTooLarge', function () {
+      UI.toast({
+        kind: 'warn',
+        title: 'That is too much text to share',
+        text: 'ALL SHARE can share up to 64 KB of copied text at a time. Nothing was sent.'
+      });
+    });
   };
 
   SessionUI.prototype._bindStageEvents = function () {
@@ -288,10 +295,13 @@
   };
 
   SessionUI.prototype._onNotice = function (notice) {
+    // The detail field carries byte counts and error strings from the agent —
+    // useful in the log, not something to put in front of a user. The message
+    // is the part written to be read.
+    if (notice.detail) AS.Log.info('notice ' + notice.code + ': ' + notice.detail);
     UI.toast({
       kind: notice.severity === 'error' ? 'error' : notice.severity === 'warning' ? 'warn' : 'info',
-      title: notice.message,
-      text: notice.detail || ''
+      title: notice.message
     });
   };
 

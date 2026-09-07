@@ -162,6 +162,11 @@ You can turn either direction off in Settings.
 
 Only text is shared. Files and images are not.
 
+There is a size limit of 64 KB — roughly thirty pages of writing. Anything
+larger is not sent at all, and ALL SHARE tells you so. It does not send half of
+it, because a clipboard that pastes most of what you copied is worse than one
+that says it could not.
+
 ---
 
 ## Waking your PC

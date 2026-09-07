@@ -217,6 +217,56 @@ async function main() {
   await page.waitForTimeout(150);
   step('wheel-sent');
 
+  // Clipboard, both the ordinary case and the oversized one. Pasting is driven
+  // by a real ClipboardEvent because that is exactly how the product works —
+  // there is no background clipboard read, so nothing happens unless the paste
+  // event fires.
+  const clipboardText = 'ALL SHARE clipboard test — ünïcödé and a tab\there';
+  const oversize = 'x'.repeat(80 * 1024);
+  const clipboardResult = await page.evaluate(async (payload) => {
+    const results = { warned: null };
+    const input = window.AllShare.app.input;
+    const firePaste = function (text) {
+      const data = new DataTransfer();
+      data.setData('text/plain', text);
+      document.dispatchEvent(new ClipboardEvent('paste', {
+        clipboardData: data, bubbles: true, cancelable: true
+      }));
+    };
+    let refused = false;
+    input.on('clipboardTooLarge', function (e) { refused = true; results.warned = e.bytes; });
+
+    firePaste(payload.text);
+    await new Promise((r) => setTimeout(r, 200));
+    firePaste(payload.oversize);
+    await new Promise((r) => setTimeout(r, 200));
+    results.refusedOversize = refused;
+    return results;
+  }, { text: clipboardText, oversize });
+  await page.waitForTimeout(300);
+
+  // The other direction: the agent is pushing a known string on a repeat, so
+  // waiting for one is not a race. Writing it to the *local* clipboard needs a
+  // focused document and a permission the headless browser may withhold, so
+  // what is asserted is that the text arrived — the local write is best-effort
+  // by design and the UI offers a manual paste when it fails.
+  const received = await page.evaluate(async () => {
+    const session = window.AllShare.app.session;
+    return await new Promise((resolve) => {
+      const timer = setTimeout(() => resolve(null), 8000);
+      session.on('clipboard', function (body) {
+        clearTimeout(timer);
+        resolve(body && body.text);
+      });
+    });
+  });
+  step('clipboard-received', received);
+  out.clipboard = {
+    sent: clipboardText,
+    refusedOversize: !!clipboardResult.refusedOversize,
+    received: received
+  };
+
   // A held key that is never released, so the test can prove the agent is told
   // to let go when the session ends rather than leaving it stuck down.
   await page.keyboard.down('KeyW');

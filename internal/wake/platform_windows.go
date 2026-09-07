@@ -176,12 +176,19 @@ func (p *windowsPlatform) ScheduleCheckIn(interval time.Duration) error {
 
 	// schtasks cannot set the wake flag, so it is applied with PowerShell's
 	// scheduled-task settings, which can.
+	//
+	// The task name is a compile-time constant and reaches nothing from the
+	// network, so this is not an injection today. It is quoted properly anyway,
+	// because the day someone makes the name configurable is the day an
+	// unescaped interpolation becomes one, and that change would not look
+	// dangerous on its own.
+	name := psQuote(p.taskName)
 	script := fmt.Sprintf(
-		`$t = Get-ScheduledTask -TaskName '%s'; `+
+		`$t = Get-ScheduledTask -TaskName %s; `+
 			`$s = $t.Settings; $s.WakeToRun = $true; $s.DisallowStartIfOnBatteries = $false; `+
 			`$s.StopIfGoingOnBatteries = $false; $s.ExecutionTimeLimit = 'PT5M'; `+
-			`Set-ScheduledTask -TaskName '%s' -Settings $s | Out-Null`,
-		p.taskName, p.taskName)
+			`Set-ScheduledTask -TaskName %s -Settings $s | Out-Null`,
+		name, name)
 	if _, err := runHidden("powershell", "-NoProfile", "-NonInteractive", "-Command", script); err != nil {
 		return fmt.Errorf("allshare/wake: the schedule was created but could not be set to wake this PC: %w", err)
 	}
@@ -223,6 +230,13 @@ func (p *windowsPlatform) PreventSleep(reason string) (func(), error) {
 
 // runHidden runs a command without flashing a console window, which matters
 // when the agent runs from a service or a tray application.
+// psQuote renders s as a PowerShell single-quoted string. Inside single quotes
+// PowerShell expands nothing, so doubling the quote character is the whole of
+// the escaping rule.
+func psQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", "''") + "'"
+}
+
 func runHidden(name string, args ...string) (string, error) {
 	cmd := exec.Command(name, args...)
 	cmd.SysProcAttr = &windows.SysProcAttr{HideWindow: true}

@@ -33,6 +33,7 @@ import (
 	"github.com/mmc/all-share/internal/agentcore"
 	"github.com/mmc/all-share/internal/capture"
 	"github.com/mmc/all-share/internal/capture/testsource"
+	"github.com/mmc/all-share/internal/clipboard"
 	"github.com/mmc/all-share/internal/config"
 	agentinput "github.com/mmc/all-share/internal/input"
 	"github.com/mmc/all-share/internal/rendezvous/pairing"
@@ -60,6 +61,7 @@ type stack struct {
 	serviceURL string
 	agent      *agentcore.Agent
 	recorder   *agentinput.Recorder
+	clipboard  *clipboard.Recorder
 	source     *testsource.Provider
 	deviceID   string
 	cancel     context.CancelFunc
@@ -120,10 +122,11 @@ func startStack(t *testing.T) *stack {
 		t.Fatalf("test capture backend: %v", err)
 	}
 	recorder := agentinput.NewRecorder(4096)
+	clip := clipboard.NewRecorder()
 
 	instance, err := agentcore.New(agentcore.Options{
 		Config: cfg, Identity: identity, Provider: provider,
-		Injector: recorder, Log: quiet,
+		Injector: recorder, Clipboard: clip, Log: quiet,
 	})
 	if err != nil {
 		t.Fatalf("build agent: %v", err)
@@ -132,7 +135,7 @@ func startStack(t *testing.T) *stack {
 	ctx, cancel := context.WithCancel(context.Background())
 	s := &stack{
 		t: t, server: server, serviceURL: serviceURL, agent: instance,
-		recorder: recorder, source: provider,
+		recorder: recorder, clipboard: clip, source: provider,
 		deviceID: identity.Public().String(), cancel: cancel,
 	}
 	s.wg.Add(1)
@@ -228,6 +231,11 @@ type driverResult struct {
 			Visible bool   `json:"visible"`
 		} `json:"state"`
 	} `json:"cursor"`
+	Clipboard struct {
+		Sent            string `json:"sent"`
+		RefusedOversize bool   `json:"refusedOversize"`
+		Received        string `json:"received"`
+	} `json:"clipboard"`
 	Latency *struct {
 		Samples  int `json:"samples"`
 		MinMs    int `json:"minMs"`
@@ -312,9 +320,31 @@ func TestFullSession(t *testing.T) {
 		t.Fatalf("open a pairing window: %v", err)
 	}
 
+	// Push a known string from the PC's clipboard on a repeat for the duration
+	// of the run, so the browser's wait for one is not a race against a single
+	// event fired before the session was up.
+	const copiedOnPC = "copied on the PC — ünïcödé too"
+	stopCopying := make(chan struct{})
+	copying := make(chan struct{})
+	go func() {
+		defer close(copying)
+		ticker := time.NewTicker(400 * time.Millisecond)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-stopCopying:
+				return
+			case <-ticker.C:
+				s.clipboard.Copy(copiedOnPC)
+			}
+		}
+	}()
+
 	shot := filepath.Join("artifacts", "session.png")
 	_ = os.MkdirAll("artifacts", 0o755)
 	result := s.runDriver(t, code, "--screenshot="+shot)
+	close(stopCopying)
+	<-copying
 
 	// --- The picture actually arrived and was decoded. ---
 	if result.Decoded.FramesDecoded < 10 {
@@ -443,6 +473,41 @@ func TestFullSession(t *testing.T) {
 		t.Error("the session ended without releasing held input; a key would be stuck on the PC")
 	} else {
 		t.Log("teardown: the agent was told to release everything when the session ended")
+	}
+
+	// --- Clipboard, both directions and the size limit. ---
+	//
+	// The oversized case matters as much as the ordinary one. Truncating a
+	// clipboard silently is worse than refusing it: the user pastes something
+	// that looks like what they copied and finds out later that it was not.
+	written := s.clipboard.Written()
+	if len(written) == 0 {
+		t.Error("nothing reached the PC's clipboard; clipboard sharing is broken")
+	} else {
+		if written[0] != result.Clipboard.Sent {
+			t.Errorf("the PC's clipboard got %q, want %q", written[0], result.Clipboard.Sent)
+		} else {
+			t.Logf("clipboard: %d characters arrived intact, including non-ASCII and a tab",
+				len([]rune(written[0])))
+		}
+	}
+	if !result.Clipboard.RefusedOversize {
+		t.Error("an oversized paste was not refused by the client")
+	}
+	if result.Clipboard.Received != copiedOnPC {
+		t.Errorf("the browser received %q from the PC's clipboard, want %q",
+			result.Clipboard.Received, copiedOnPC)
+	} else {
+		t.Log("clipboard: text copied on the PC reached the browser intact")
+	}
+	for _, text := range written {
+		if len(text) > protocol.MaxClipboardBytes {
+			t.Errorf("the PC's clipboard received %d bytes, over the %d-byte limit",
+				len(text), protocol.MaxClipboardBytes)
+		}
+		if strings.HasPrefix(text, strings.Repeat("x", 1024)) {
+			t.Error("an oversized clipboard arrived truncated; it should not have arrived at all")
+		}
 	}
 
 	// --- The locally drawn cursor works. ---

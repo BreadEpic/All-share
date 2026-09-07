@@ -286,7 +286,8 @@ persistent read permission to grant — the page physically cannot read your
 clipboard when you are not actively copying. The toolbar shows a brief
 "Clipboard sent" indicator each time text moves, so a transfer is never silent.
 
-Content larger than 256 KB is refused rather than truncated.
+Content larger than 64 KB is refused rather than truncated, in both directions,
+with a plain-language explanation. See [Section 5.10](#510-clipboard-abuse).
 
 ### 4.8 Transport (defends A1)
 
@@ -383,12 +384,26 @@ that is not an agent.
 ### 5.2 Command injection
 
 **Looked for:** any construction of a shell command, `cmd.exe` invocation, or
-`ShellExecute` from remote-controlled data.
+`ShellExecute` from data that a peer or the server can influence.
 
-**Found:** none. The agent runs exactly one external process — itself, in the
-user session, via `CreateProcessAsUser` with an argv array (no shell, no string
-parsing) and a fixed executable path taken from `os.Executable()`. The
-installer script is not reachable from the network.
+**Found:** four external-process call sites, none reachable from the network.
+
+| Where | What it runs | Arguments come from |
+|---|---|---|
+| `service_windows.go` | itself, in the user session, via `CreateProcessAsUser` | `os.Executable()`, plus two literal flags |
+| `platform_windows.go` | `powercfg /devicequery wake_armed` | all literal |
+| `platform_windows.go` | `schtasks /Create …` | a compile-time task name, `os.Executable()`, and an integer clamped to 5–720 |
+| `platform_windows.go` | `powershell -NoProfile -NonInteractive -Command` | the same compile-time task name |
+
+Every one passes an argv array — Go's `exec.Command` does not invoke a shell —
+so there is no shell metacharacter to escape in the first place. The one place
+that builds a *string* another interpreter will parse is the PowerShell script,
+and its only interpolation is that constant task name.
+
+**Changed during review:** that interpolation is now escaped with `psQuote`
+anyway. It is not an injection today; it would silently become one the day
+somebody makes the task name configurable, and that change would not look
+dangerous on its own.
 
 **Status:** OK.
 
@@ -408,10 +423,16 @@ per-device files, so there is no filename to traverse.
 
 ### 5.4 Arbitrary file execution
 
-**Looked for:** any code path that runs a binary chosen at runtime.
+**Looked for:** any code path that runs a binary whose path is chosen at
+runtime.
 
-**Found:** one — the service supervisor relaunching the agent in the user
-session. It uses `os.Executable()`, not a configured or received path.
+**Found:** two, both naming the agent itself via `os.Executable()`: the service
+supervisor relaunching into the user session, and the scheduled wake task. In
+neither case is the path configured, received, or derived from anything but the
+running process. `powercfg`, `schtasks` and `powershell` are resolved from
+`PATH` by name, which is the standard behaviour for Windows system tools and is
+only exploitable by someone who can already write to `PATH` — which is to say,
+someone who already has the privileges the agent runs with.
 
 **Status:** OK.
 
@@ -517,8 +538,26 @@ cannot be protected by a passphrase. Threat N1 covers it.
 **Looked for:** silent capture, background reads, and unbounded transfers.
 
 **Found:** off by default, per-direction switches, event-driven so there is no
-background read capability at all, text only, 256 KB cap, visible indicator on
-every transfer.
+background read capability at all, text only, and a visible indicator on every
+transfer.
+
+**Changed during review:** oversized content was silently **truncated** in both
+directions, at two different limits — the client cut at 98 304 *characters*, the
+agent at 65 536 *bytes*. A silently shortened clipboard is worse than a refused
+one: the user pastes something that looks like what they copied and finds out it
+was not, somewhere they have already moved on from. And measuring characters on
+one side and bytes on the other meant a paste of non-Latin text could pass the
+client's check and be cut by the agent.
+
+Both directions now refuse rather than truncate, at one limit (64 KB, measured
+in UTF-8 bytes), and say so in plain language. The two constants are checked
+against each other by `protocol-conformance.js` so they cannot drift apart
+again.
+
+**Also changed:** the client showed a `Notice`'s `detail` field in the toast.
+That field carries byte counts and raw error strings from the agent — useful in
+the log, not something to put in front of a user. Detail now goes to the log and
+the toast shows only the message, which is the part written to be read.
 
 **Status:** OK.
 
@@ -581,7 +620,7 @@ The one place hostile data reaches C++ is not present: audio and video flow
 
 ### 5.15 Findings
 
-One finding was fixed during this review.
+Five findings were fixed during this review.
 
 **Unencrypted service addresses were accepted (fixed).** Both the browser client
 and the agent would connect to a `ws://` address to any host. The end-to-end
@@ -599,6 +638,31 @@ never passed through the settings screen. `ws://` remains available for
 local-network hosts, for the reasons in
 [Section 4.8](#48-transport-defends-a1). Both implementations are tested against
 the same case list.
+
+**The fingerprint alphabet contained confusable characters (fixed).** The
+fingerprint is the string a user compares between the PC and the browser to
+confirm they are talking to the machine they paired with. Its own comment said
+the alphabet omitted `I`, `O`, `0` and `1`; the encoding string was
+`ABCDEFGHJKLMNPQRSTUVWXYZ23456789`, which contains both `L` and `U`. A user
+reading `L` for `1`, or transcribing `U` as `V`, would conclude the fingerprints
+did not match — which looks exactly like a machine-in-the-middle warning while
+being nothing of the kind, and the natural response to that is to give up rather
+than to connect. The test that should have caught it checked one randomly
+generated key, so it passed whenever that key happened to avoid both letters.
+
+Fixed by using the pairing-code alphabet, `0123456789ABCDEFGHJKMNPQRSTVWXYZ`,
+for both — so there is now one character set anywhere ALL SHARE asks a person to
+read or type. The test sweeps 2000 keys and asserts it exercised every position
+of the alphabet, and Go now emits fingerprint vectors that the browser
+implementation is checked against, which it previously was not.
+
+**Clipboard truncation and mismatched limits (fixed).** Detailed in
+Section 5.10.
+
+**A raw error string was shown to users (fixed).** Also Section 5.10.
+
+**PowerShell interpolation (hardened).** Detailed in Section 5.2. Not
+exploitable; escaped anyway.
 
 Two further places are called out for anyone auditing the code, because the
 obvious implementation would have been wrong:

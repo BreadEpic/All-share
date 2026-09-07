@@ -66,6 +66,14 @@ if (corpus.versionMajor !== P.VERSION_MAJOR) {
 if (corpus.maxCtrlMessage !== P.MAX_CTRL_MESSAGE) {
   check('maxCtrlMessage', false, corpus.maxCtrlMessage + ' vs ' + P.MAX_CTRL_MESSAGE);
 }
+// The clipboard limit is enforced on both sides, and both sides tell the user
+// about it. If they disagree, one end promises something the other refuses.
+if (corpus.maxClipboardBytes !== P.MAX_CLIPBOARD_BYTES) {
+  check('maxClipboardBytes', false, corpus.maxClipboardBytes + ' vs ' + P.MAX_CLIPBOARD_BYTES);
+}
+if (corpus.wheelTicksPerNotch !== P.WHEEL_TICKS_PER_NOTCH) {
+  check('wheelTicksPerNotch', false, corpus.wheelTicksPerNotch + ' vs ' + P.WHEEL_TICKS_PER_NOTCH);
+}
 
 function bitmapFromHex(h) {
   const bm = new P.KeyBitmap();

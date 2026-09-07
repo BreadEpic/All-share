@@ -895,8 +895,15 @@ func (s *Session) pumpClipboard() {
 			if !ok {
 				return
 			}
+			// Refuse rather than truncate. A silently shortened clipboard is
+			// worse than none at all: the user pastes something that looks
+			// like what they copied and only discovers the missing half
+			// later, somewhere it matters.
 			if len(text) > protocol.MaxClipboardBytes {
-				text = text[:protocol.MaxClipboardBytes]
+				s.sendNotice(protocol.NoticeWarning, "clipboard_too_large",
+					"That copied text was too large to share, so it was left on the PC.",
+					fmt.Sprintf("%d bytes, limit %d", len(text), protocol.MaxClipboardBytes))
+				continue
 			}
 			s.sendCtrlJSON(protocol.TypeClipboardOut, protocol.Clipboard{Text: text})
 		}
@@ -1150,8 +1157,12 @@ func (s *Session) handleClipboardIn(body []byte) {
 	if err := protocol.DecodeJSON(body, &clip); err != nil {
 		return
 	}
+	// Same reasoning as the outgoing direction: half a clipboard is a trap.
 	if len(clip.Text) > protocol.MaxClipboardBytes {
-		clip.Text = clip.Text[:protocol.MaxClipboardBytes]
+		s.sendNotice(protocol.NoticeWarning, "clipboard_too_large",
+			"That text was too large to send to the PC, so the PC's clipboard is unchanged.",
+			fmt.Sprintf("%d bytes, limit %d", len(clip.Text), protocol.MaxClipboardBytes))
+		return
 	}
 	if err := s.cfg.Clipboard.Write(clip.Text); err != nil {
 		s.log.Debug("could not write to the clipboard", "err", err)
