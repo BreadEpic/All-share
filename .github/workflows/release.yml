@@ -1,0 +1,240 @@
+# ALL SHARE release.
+#
+# Fires on a v* tag and publishes a GitHub Release with everything a user needs:
+# the Windows installer, the client they unzip and open, and the rendezvous
+# server for four platforms.
+#
+# Everything is built here rather than uploaded from somebody's machine, so what
+# people download is reproducible from the tag — and the Windows agent goes
+# through the same import check CI runs, because an agent that quietly links a
+# compiler runtime DLL works only on the machine that built it.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to build and publish (e.g. v1.0.0)"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+env:
+  GO_VERSION: "1.25"
+
+jobs:
+  build:
+    name: Build the binaries
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Work out the version
+        id: version
+        run: |
+          ref="${{ inputs.tag || github.ref_name }}"
+          echo "tag=$ref" >> "$GITHUB_OUTPUT"
+          echo "number=${ref#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Install mingw-w64
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y mingw-w64 zip
+
+      - name: Cache the libopus build
+        uses: actions/cache@v4
+        with:
+          path: .deps
+          key: opus-${{ runner.os }}-mingw-1.5.2
+
+      - name: Build the rendezvous server
+        env:
+          ALLSHARE_VERSION: ${{ steps.version.outputs.number }}
+        run: bash build/build-server.sh
+
+      - name: Build the Windows agent
+        env:
+          ALLSHARE_VERSION: ${{ steps.version.outputs.number }}
+        run: bash build/build-agent.sh
+
+      - name: The agent must import only Windows system DLLs
+        run: |
+          imports="$(x86_64-w64-mingw32-objdump -p dist/windows/allshare-agent.exe \
+            | grep 'DLL Name' | awk '{print tolower($3)}' | sort -u)"
+          echo "$imports"
+          allowed="advapi32.dll d3d11.dll dxgi.dll kernel32.dll mf.dll mfplat.dll msvcrt.dll ole32.dll oleaut32.dll sas.dll shell32.dll user32.dll userenv.dll winmm.dll ws2_32.dll wtsapi32.dll"
+          for dll in $imports; do
+            case " $allowed " in
+              *" $dll "*) ;;
+              *) echo "refusing to release an agent that imports $dll" >&2; exit 1 ;;
+            esac
+          done
+
+      - name: Package the client
+        env:
+          ALLSHARE_VERSION: ${{ steps.version.outputs.number }}
+        run: bash build/build-client.sh
+
+      - name: The client's version must match the tag
+        # The client ships as plain files with no build step, so its version is a
+        # hand-edited constant. A release whose client reports a different
+        # version from the tag it came from is a support problem later.
+        run: |
+          declared="$(grep -oE "AS\.VERSION = '[^']+'" client/js/core/util.js | cut -d"'" -f2)"
+          want="${{ steps.version.outputs.number }}"
+          if [ "$declared" != "$want" ]; then
+            echo "client/js/core/util.js declares $declared but the tag is $want" >&2
+            exit 1
+          fi
+          echo "client version $declared matches the tag"
+
+      - name: Collect the binaries into one flat directory
+        # Explicit rather than relying on how upload-artifact picks a common
+        # root for a multi-path upload: the jobs downstream have to know exactly
+        # where each file lands.
+        run: |
+          mkdir -p out
+          cp dist/windows/allshare-agent.exe out/
+          cp dist/allshare-client.zip out/
+          cp dist/server/allshare-server-* out/
+          ls -la out
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: binaries
+          path: out/
+          if-no-files-found: error
+
+  installer:
+    name: Build the Windows installer
+    needs: build
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: binaries
+          path: incoming
+
+      - name: Put the binaries where the installer script expects them
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist\windows | Out-Null
+          Copy-Item incoming\allshare-agent.exe dist\windows\allshare-agent.exe
+          Copy-Item incoming\allshare-client.zip dist\allshare-client.zip
+          Get-ChildItem -Recurse dist
+
+      - name: Install Inno Setup
+        run: choco install innosetup --no-progress -y
+
+      - name: Compile the installer
+        shell: pwsh
+        run: |
+          $tag = "${{ inputs.tag }}"
+          if (-not $tag) { $tag = "${{ github.ref_name }}" }
+          $env:ALLSHARE_VERSION = $tag -replace '^v', ''
+          Write-Host "Building the installer for $env:ALLSHARE_VERSION"
+
+          # Chocolatey installs to Program Files (x86), but look rather than
+          # assume: a failure here should say what was missing.
+          $iscc = Get-ChildItem -Path 'C:\Program Files (x86)', 'C:\Program Files' `
+            -Filter ISCC.exe -Recurse -ErrorAction SilentlyContinue |
+            Select-Object -First 1 -ExpandProperty FullName
+          if (-not $iscc) { throw 'ISCC.exe was not found after installing Inno Setup' }
+          Write-Host "Using $iscc"
+
+          & $iscc installer\allshare.iss
+          if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed with exit code $LASTEXITCODE" }
+          Get-ChildItem dist\AllShareSetup.exe
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: installer
+          path: dist/AllShareSetup.exe
+          if-no-files-found: error
+
+  publish:
+    name: Publish the release
+    needs: [build, installer]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: binaries
+          path: staging
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: installer
+          path: staging
+
+      - name: Lay the files out and checksum them
+        id: stage
+        run: |
+          tag="${{ inputs.tag || github.ref_name }}"
+          mkdir -p release
+          cp staging/AllShareSetup.exe release/
+          cp staging/allshare-client.zip release/
+          # Renamed on the way out: "allshare-agent.exe" beside four
+          # differently-named server binaries invites downloading the wrong one.
+          cp staging/allshare-agent.exe release/allshare-agent-windows-amd64.exe
+          cp staging/allshare-server-* release/
+          cd release
+          # Written via a temporary file so the checksum list can never end up
+          # listing itself, whatever the shell's expansion order.
+          sha256sum -- * > ../SHA256SUMS
+          mv ../SHA256SUMS SHA256SUMS
+          echo "--- releasing:"
+          ls -la
+          cat SHA256SUMS
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+      - name: Choose the release notes
+        id: notes
+        run: |
+          tag="${{ steps.stage.outputs.tag }}"
+          if [ -f "docs/release-notes/$tag.md" ]; then
+            echo "path=docs/release-notes/$tag.md" >> "$GITHUB_OUTPUT"
+          else
+            echo "no notes at docs/release-notes/$tag.md; GitHub will generate them"
+            echo "path=" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          tag="${{ steps.stage.outputs.tag }}"
+          notes="${{ steps.notes.outputs.path }}"
+          args=(release create "$tag"
+            --title "ALL SHARE $tag"
+            --verify-tag
+            release/*)
+          if [ -n "$notes" ]; then
+            args+=(--notes-file "$notes")
+          else
+            args+=(--generate-notes)
+          fi
+          case "$tag" in
+            *-alpha*|*-beta*|*-rc*) args+=(--prerelease) ;;
+          esac
+          gh "${args[@]}"

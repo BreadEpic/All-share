@@ -309,4 +309,13 @@ iscc installer/allshare.iss    # dist/AllShareSetup.exe  (on Windows)
 
 The client's version is a hand-edited constant in `client/js/core/util.js` —
 there is no build step to substitute it, which is the price of shipping plain
-files. Bump it in the same commit as the tag.
+files. Bump it in the same commit as the tag; the release workflow refuses to
+publish if the constant and the tag disagree.
+
+In practice you do not run those commands by hand. Push a `v*` tag and
+[`.github/workflows/release.yml`](../.github/workflows/release.yml) builds all
+of it, checks the agent imports only Windows system DLLs, compiles the Inno
+Setup installer on a Windows runner, writes `SHA256SUMS`, and publishes the
+GitHub Release. Put the notes in `docs/release-notes/<tag>.md` before tagging —
+the workflow uses that file if it exists and asks GitHub to generate notes if it
+does not.
