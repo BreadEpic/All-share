@@ -1,0 +1,41 @@
+{
+  "alphabet": "0123456789ABCDEFGHJKMNPQRSTVWXYZ",
+  "keys": [
+    {
+      "fingerprint": "PRTP-3KNX-0DBN",
+      "publicKey": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+    },
+    {
+      "fingerprint": "60PT-PX8C-ASXH",
+      "publicKey": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8"
+    },
+    {
+      "fingerprint": "86RN-B5G5-0VDT",
+      "publicKey": "KiXpQLl3S3ss9y0ZfmRmJTKCF1rQXt8BajlJzftH2Yw"
+    },
+    {
+      "fingerprint": "WN38-HZ7A-NPGX",
+      "publicKey": "8COTdroxtOZOFB2k68kNWXWlsTs4Qr1kL0qfBPYLZOc"
+    },
+    {
+      "fingerprint": "70J7-98BV-EX64",
+      "publicKey": "WZB9D87fF4fSl646fcfe-T_G212BzXw9yFEUUp9ixmY"
+    },
+    {
+      "fingerprint": "PX1T-QJT8-FN9Y",
+      "publicKey": "Ec7K9BiwCFXrcGCx0OLK_tLgPfDaC_guJydmuyqgwWA"
+    },
+    {
+      "fingerprint": "CY6E-VY16-D2RG",
+      "publicKey": "TwQntug_47FtyBZ9GF6ZTXX4xO3iI-jyNnKMeQIW_Gw"
+    },
+    {
+      "fingerprint": "9Q1E-D7A9-WPGH",
+      "publicKey": "PUjtO0aIGoJAEMJtgq3q2fApv-j8I5btPDeFMpk1NBo"
+    },
+    {
+      "fingerprint": "A19J-N06R-2F8H",
+      "publicKey": "__________________________________________8"
+    }
+  ]
+}

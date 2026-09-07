@@ -591,7 +591,15 @@
 
   // ------------------------------------------------------------ boot
 
-  function boot() {
+  /** Replace the page with a legible explanation of why nothing will work. */
+  function refuseToStart(what, advice) {
+    document.body.innerHTML =
+      '<div style="padding:3rem;max-width:36rem;margin:0 auto;font:15px/1.6 system-ui">' +
+      '<h1 style="font-size:20px">ALL SHARE cannot run in this browser</h1>' +
+      '<p>It needs ' + what + '.</p><p>' + advice + '</p></div>';
+  }
+
+  async function boot() {
     // Fail early and legibly if the browser is missing something essential,
     // rather than throwing halfway through a connection attempt.
     const missing = [];
@@ -601,10 +609,25 @@
     if (typeof WebSocket === 'undefined') missing.push('WebSockets');
 
     if (missing.length) {
-      document.body.innerHTML =
-        '<div style="padding:3rem;max-width:36rem;margin:0 auto;font:15px/1.6 system-ui">' +
-        '<h1 style="font-size:20px">ALL SHARE cannot run in this browser</h1>' +
-        '<p>It needs ' + missing.join(', ') + '. Please use an up-to-date version of Chrome.</p></div>';
+      refuseToStart(missing.join(', '),
+        'Please update your browser, or use Chrome.');
+      return;
+    }
+
+    // Ed25519 is the one capability that cannot be detected by looking: the
+    // Web Crypto object exists on every browser here, and only the attempt
+    // reveals whether this build knows the algorithm. Chrome shipped it
+    // unflagged in version 137 (May 2025), so an older Chromebook reaches this
+    // point and would otherwise fail with a bare NotSupportedError at the
+    // moment it generated its identity.
+    try {
+      await crypto.subtle.generateKey({ name: 'Ed25519' }, false, ['sign', 'verify']);
+    } catch (err) {
+      AS.Log.error('this browser cannot generate an Ed25519 key', err);
+      refuseToStart('Ed25519 signatures, which this browser does not support',
+        'Chrome and Chromebooks have supported this since Chrome 137, released in ' +
+        'May 2025. Updating your browser will fix it. On a Chromebook, open ' +
+        'Settings and choose "About ChromeOS", then "Check for updates".');
       return;
     }
 
@@ -619,7 +642,7 @@
   AS.boot = boot;
 
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', boot);
+    document.addEventListener('DOMContentLoaded', function () { boot(); });
   } else {
     boot();
   }

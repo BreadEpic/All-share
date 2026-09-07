@@ -113,14 +113,24 @@ func ParsePublic(s string) (PublicKey, error) {
 	return PublicKey{key: ed25519.PublicKey(raw)}, nil
 }
 
-var fingerprintEnc = base32.NewEncoding("ABCDEFGHJKLMNPQRSTUVWXYZ23456789").WithPadding(base32.NoPadding)
+// FingerprintAlphabet is Crockford base32 without I, L, O and U — the same
+// alphabet pairing codes use, so a user meets exactly one character set
+// anywhere ALL SHARE asks them to read or type something.
+//
+// Removing the four letters is what makes 0 and 1 safe to keep: with no I, L or
+// O to confuse them with, every remaining character is distinguishable from
+// every other. U is dropped so neither generator can produce an unfortunate
+// word.
+const FingerprintAlphabet = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
+
+var fingerprintEnc = base32.NewEncoding(FingerprintAlphabet).WithPadding(base32.NoPadding)
 
 // Fingerprint renders a short, human-comparable form of the key, for example
 // "K4M7-QP2X-9NRT".
 //
 // It exists so a user can eyeball that the PC they are connecting to is the one
-// they paired with, in the same spirit as an SSH host key fingerprint. The
-// alphabet omits I, O, 0 and 1 because this string gets read aloud and retyped.
+// they paired with, in the same spirit as an SSH host key fingerprint. Because
+// it gets read aloud and retyped, it uses FingerprintAlphabet.
 func (k PublicKey) Fingerprint() string {
 	if !k.Valid() {
 		return ""

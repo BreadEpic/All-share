@@ -1,10 +1,16 @@
 /*
- * Interoperability check between the browser pairing implementation and Go's.
+ * Interoperability check between the browser's identity and pairing code and
+ * Go's.
  *
- * The Go side writes a set of pairing values; this script recomputes them with
- * the browser code and asserts they match. Two independent implementations of a
- * key exchange that "look right" but disagree would fail as an unexplainable
- * "that code did not work", so they are pinned against each other.
+ * The Go side writes a set of pairing values and a set of fingerprints; this
+ * script recomputes them with the browser code and asserts they match.
+ *
+ * Both matter for the same reason. Two implementations of a key exchange that
+ * "look right" but disagree fail as an unexplainable "that code did not work".
+ * Two implementations of the fingerprint that disagree are worse: the whole
+ * point of the fingerprint is that a user compares the one on the PC with the
+ * one in the browser by eye, so a mismatch looks exactly like a security
+ * warning while being nothing of the kind.
  */
 'use strict';
 
@@ -13,11 +19,15 @@ const path = require('path');
 const env = require('./browser-env');
 
 const VECTORS = path.join(env.ROOT, 'shared', 'pair', 'testdata', 'interop.json');
-if (!fs.existsSync(VECTORS)) {
-  console.error('interop.json is missing — run `go test ./shared/pair/` first');
-  process.exit(1);
+const FINGERPRINTS = path.join(env.ROOT, 'shared', 'idkey', 'testdata', 'fingerprints.json');
+for (const file of [VECTORS, FINGERPRINTS]) {
+  if (!fs.existsSync(file)) {
+    console.error(path.basename(file) + ' is missing — run `go test ./shared/...` first');
+    process.exit(1);
+  }
 }
 const v = JSON.parse(fs.readFileSync(VECTORS, 'utf8'));
+const fp = JSON.parse(fs.readFileSync(FINGERPRINTS, 'utf8'));
 
 const sandbox = env.load(env.CORE_FILES.concat(['js/net/pairing.js']), {});
 const AS = sandbox.window.AllShare;
@@ -89,6 +99,30 @@ function ok(name, condition, detail) {
   ok('rejects an out-of-alphabet character', !P.validate('ABCD-EFGH-JK!M').ok);
   ok('accepts the real code formatted', P.validate(P.format(v.code)).ok);
   ok('folds O to 0 and I to 1', P.canonicalize('O0I1') === '0011');
+
+  // --- Fingerprints -------------------------------------------------------
+  // Identity is loaded on its own here: fingerprintOf needs nothing but
+  // crypto.subtle and Util, and the rest of that module wants IndexedDB.
+  const idSandbox = env.load(env.CORE_FILES.concat(['js/core/identity.js']), {});
+  const Identity = idSandbox.window.AllShare.Identity;
+
+  for (const entry of fp.keys) {
+    const bytes = U.fromB64(entry.publicKey);
+    const got = await Identity.fingerprintOf(bytes);
+    ok('fingerprint of ' + entry.publicKey.slice(0, 10) + '… matches Go',
+      got === entry.fingerprint, got + ' vs ' + entry.fingerprint);
+  }
+
+  // Every character a fingerprint can contain must be one a user can read back
+  // without hesitating, and the same set the pairing code uses.
+  const alphabet = fp.alphabet;
+  ok('the alphabet has 32 characters', alphabet.length === 32, String(alphabet.length));
+  for (const bad of ['I', 'L', 'O', 'U']) {
+    ok('the alphabet excludes ' + bad, !alphabet.includes(bad));
+  }
+  ok('every fingerprint character is in the alphabet',
+    [...fp.keys.map((k) => k.fingerprint).join('').replace(/-/g, '')]
+      .every((c) => alphabet.includes(c)));
 
   console.log(failures ? failures + ' failure(s)' : 'Browser and Go pairing agree exactly.');
   process.exit(failures ? 1 : 0);

@@ -100,14 +100,69 @@ func TestFingerprintIsStableAndReadable(t *testing.T) {
 	if len(fp) != 14 || strings.Count(fp, "-") != 2 {
 		t.Fatalf("fingerprint %q is not in XXXX-XXXX-XXXX form", fp)
 	}
-	for _, bad := range []string{"I", "O", "0", "1", "U"} {
-		if strings.Contains(fp, bad) {
-			t.Errorf("fingerprint %q contains the confusable character %q", fp, bad)
-		}
-	}
+
 	other, _ := Generate()
 	if other.Public().Fingerprint() == fp {
 		t.Fatal("two distinct keys share a fingerprint")
+	}
+
+	// A fingerprint gets read off one screen and typed into another, so every
+	// character has to be unambiguous. One key proves nothing here — an earlier
+	// version of this test checked a single random key and passed for months
+	// while the alphabet still contained L and U, because most keys happen not
+	// to use them. Sweep enough keys that every position of the alphabet is
+	// exercised many times over.
+	const forbidden = "ILOU"
+	seen := map[rune]bool{}
+	for i := 0; i < 2000; i++ {
+		k, err := Generate()
+		if err != nil {
+			t.Fatalf("generate: %v", err)
+		}
+		f := k.Public().Fingerprint()
+		for _, c := range f {
+			if c == '-' {
+				continue
+			}
+			seen[c] = true
+			if strings.ContainsRune(forbidden, c) {
+				t.Fatalf("fingerprint %q contains the confusable character %q", f, string(c))
+			}
+			if !strings.ContainsRune(FingerprintAlphabet, c) {
+				t.Fatalf("fingerprint %q contains %q, which is not in the alphabet", f, string(c))
+			}
+		}
+	}
+	// If the sweep never produced most of the alphabet, it was not a real test
+	// of the alphabet.
+	if len(seen) < len(FingerprintAlphabet) {
+		t.Errorf("the sweep produced only %d of the %d alphabet characters",
+			len(seen), len(FingerprintAlphabet))
+	}
+}
+
+// The fingerprint and the pairing code are the two strings a user reads aloud
+// and retypes. They must use the same character set, or "is that an O or a
+// zero?" becomes a question whose answer depends on which screen you are
+// looking at.
+func TestFingerprintAlphabetMatchesPairingCodes(t *testing.T) {
+	// Duplicated rather than imported: shared/pair imports nothing from here,
+	// and a dependency in the other direction to share a constant would be a
+	// worse trade than a literal with a test to keep it honest.
+	const pairingAlphabet = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
+	if FingerprintAlphabet != pairingAlphabet {
+		t.Errorf("fingerprint alphabet %q does not match the pairing alphabet %q",
+			FingerprintAlphabet, pairingAlphabet)
+	}
+	if len(FingerprintAlphabet) != 32 {
+		t.Fatalf("a base32 alphabet must be 32 characters, got %d", len(FingerprintAlphabet))
+	}
+	seen := map[rune]bool{}
+	for _, c := range FingerprintAlphabet {
+		if seen[c] {
+			t.Errorf("alphabet repeats %q", string(c))
+		}
+		seen[c] = true
 	}
 }
 

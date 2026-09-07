@@ -146,6 +146,36 @@ async function checkServiceAddressPolicy(browser) {
   }
 }
 
+async function checkOldBrowserRefusal(browser) {
+  // A browser without Ed25519 must be told so on the first screen, not left to
+  // fail with a bare NotSupportedError when it generates its identity. The only
+  // honest way to test this is to take the algorithm away.
+  const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  const page = await context.newPage();
+  try {
+    await page.addInitScript(() => {
+      const real = crypto.subtle.generateKey.bind(crypto.subtle);
+      crypto.subtle.generateKey = function (algorithm) {
+        const name = algorithm && (algorithm.name || algorithm);
+        if (String(name).toLowerCase() === 'ed25519') {
+          return Promise.reject(new DOMException('Unrecognized name.', 'NotSupportedError'));
+        }
+        return real.apply(null, arguments);
+      };
+    });
+    await page.goto('file://' + CLIENT);
+    await page.waitForFunction(() => /cannot run in this browser/i.test(document.body.textContent), { timeout: 5000 })
+      .catch(() => {});
+
+    const body = await page.textContent('body');
+    check('an old browser is refused up front', /cannot run in this browser/i.test(body), body.slice(0, 120));
+    check('the message names the real cause', /Ed25519/.test(body));
+    check('and says how to fix it', /137|update/i.test(body));
+  } finally {
+    await context.close();
+  }
+}
+
 async function checkSettingsRender(browser) {
   // Every settings tab must build without throwing, in both colour schemes.
   // A panel that throws on open takes the whole modal with it.
@@ -176,6 +206,7 @@ async function main() {
   try {
     await checkDeveloperMode(browser);
     await checkServiceAddressPolicy(browser);
+    await checkOldBrowserRefusal(browser);
     await checkSettingsRender(browser);
   } finally {
     await browser.close();

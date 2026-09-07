@@ -44,7 +44,7 @@ whole client.
 | `<img src="sibling.png">` | works, but **taints canvas** | Icons are inline SVG, which is better anyway |
 | `@font-face` | **blocked** (fonts are CORS-fetched) | System font stack only |
 | `localStorage`, IndexedDB | **work** | Settings persist; the device key lives in IndexedDB |
-| Ed25519, X25519, PBKDF2, HKDF | **all present** | Modern pairing crypto with no vendored library |
+| Ed25519, X25519, PBKDF2, HKDF | **all present**, Ed25519 from Chrome 137 | Modern pairing crypto with no vendored library; the client probes Ed25519 at startup and says so plainly if the browser is older |
 | Pointer Lock / Keyboard Lock permission | **granted**, not prompted | Mouse Lock works without a permission dance |
 | WebSocket to `ws://` and `wss://` | **works**, sends `Origin: null` | The rendezvous accepts `null`; safe, because nothing works without a signature |
 
@@ -554,7 +554,7 @@ the agent reports sound as unavailable rather than sending silence.
 | Component | Choice | Why, and what was rejected |
 |---|---|---|
 | Client | Plain JavaScript, no build step | ES modules are blocked from `file://`; a bundler would add a build step to something whose entire premise is "double-click index.html". TypeScript was rejected for the same reason |
-| Client crypto | WebCrypto only | Ed25519, X25519, PBKDF2 and HKDF are all present. A vendored library would be more code in the most sensitive path |
+| Client crypto | WebCrypto only | Ed25519, X25519, PBKDF2 and HKDF are all present (Ed25519 unflagged from Chrome 137, May 2025). A vendored library would be more code in the most sensitive path |
 | Agent transport | Go with Pion | Pure Go WebRTC with a real Google Congestion Control implementation. libwebrtc would mean a C++ build measured in hours; SIPSorcery and webrtc-rs are less proven |
 | Agent capture | C++ through cgo | Direct3D and Media Foundation are C++ APIs. Everything above the capture boundary stays in Go |
 | Server | Go, single static binary | No runtime, no dependencies, cross-compiles anywhere. Node would need a runtime on the box; Rust would be fine but buys nothing here |

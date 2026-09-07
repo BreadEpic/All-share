@@ -131,7 +131,10 @@
   Identity.fingerprintOf = async function (publicKeyBytes) {
     const input = U.concatBytes([U.utf8('ALLSHARE-FP-v1'), publicKeyBytes]);
     const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', input));
-    const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    // Must match idkey.FingerprintAlphabet in Go exactly, or the two ends show
+    // different strings for the same key and the whole point is lost. Crockford
+    // base32 without I, L, O and U — the same alphabet as pairing codes.
+    const alphabet = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
     let bits = 0;
     let acc = 0;
     let out = '';

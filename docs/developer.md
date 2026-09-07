@@ -1,0 +1,309 @@
+# Working on ALL SHARE
+
+How the code is laid out, how to build it, how to test it, and the handful of
+constraints that shaped it. If you are looking for the *reasoning* behind the
+architecture — the alternatives considered and why they were rejected — that is
+[ARCHITECTURE.md](../ARCHITECTURE.md).
+
+---
+
+## 1. Layout
+
+```
+client/              The Chromebook client. Plain files, no build step.
+  index.html         Classic <script> tags in load order.
+  css/               theme.css (tokens), app.css, session.css
+  js/core/           util, log, store, identity
+  js/net/            protocol, pairing, rendezvous, session
+  js/input/          keymap, input
+  js/ui/             icons, components, home, pairing-ui, settings, session-ui
+  js/app.js          Wires it together.
+
+agent/
+  cmd/allshare-agent/   CLI, Windows service, session supervisor
+  native/               C++: Direct3D, Desktop Duplication, Media Foundation, WASAPI
+
+server/
+  cmd/allshare-server/  The rendezvous.
+
+internal/
+  agentcore/         Agent lifecycle: registration, pairing, sessions, wake
+  capture/           Capture interface; the Windows cgo bridge; the test source
+  session/           Pion sender, RTP packetisation, quality control
+  input/             SendInput on Windows
+  clipboard/         Windows clipboard
+  wake/              Wake capability detection and the check-in timer
+  config/            Agent settings
+  rendezvous/        signal (hub, conn, wake), registry, pairing, turnsvc
+
+shared/              Used by more than one binary, and mirrored in JavaScript.
+  protocol/          Wire format: wire.go (input), ctrl.go (control), keys.go, signal.go
+  idkey/             Ed25519 device identity
+  pair/              The pairing key exchange
+  rvclient/          Rendezvous client used by the agent
+
+test/
+  e2e/               Real browser, real agent, real server
+  tools/             Cross-language conformance and unit tests
+```
+
+Nothing is over 1,500 lines. `internal/session/session.go` is the largest at
+about 1,400, and it is the one file where splitting would separate things that
+have to change together.
+
+---
+
+## 2. Building
+
+### The server
+
+Pure Go, no cgo. Builds anywhere:
+
+```bash
+go build ./server/cmd/allshare-server
+# or for every target at once:
+bash build/build-server.sh
+```
+
+### The client
+
+There is no build. The client is plain files a browser opens off disk. To
+package it for download:
+
+```bash
+bash build/build-client.sh     # produces dist/allshare-client.zip
+```
+
+To work on it, open `client/index.html` in Chrome. That is the real thing, not
+a development mode.
+
+### The Windows agent
+
+The agent needs the native capture library, which is C++ against Direct3D 11,
+Desktop Duplication, Media Foundation and WASAPI. It cross-compiles from Linux
+with mingw-w64, which is how CI builds it:
+
+```bash
+sudo apt-get install mingw-w64
+bash build/build-agent.sh      # produces dist/windows/allshare-agent.exe
+```
+
+`build-native.sh` also fetches and builds libopus once into `.deps/`, statically.
+If libopus cannot be built the library is still produced, without audio, and the
+agent reports sound as unavailable rather than sending silence.
+
+Two linker details that are easy to get wrong:
+
+- `-static-libstdc++` is a **g++ driver** option, and cgo links through `gcc`,
+  where it is silently ignored. The archive is forced with
+  `-Wl,-Bstatic -lstdc++ -Wl,-Bdynamic` instead. Get this wrong and the .exe
+  imports `libstdc++-6.dll`, which is not on any user's machine.
+- `-static-libgcc` for the same reason.
+
+Verify the result imports only system DLLs:
+
+```bash
+x86_64-w64-mingw32-objdump -p dist/windows/allshare-agent.exe | grep 'DLL Name'
+```
+
+It should list only KERNEL32, USER32, ole32, msvcrt, d3d11, dxgi and MFPlat.
+
+---
+
+## 3. Testing
+
+```bash
+go test ./...                        # Go unit tests
+node test/tools/client-unit.js       # client logic under Node
+node test/tools/protocol-conformance.js   # JS encoder vs Go, byte for byte
+node test/tools/pairing-interop.js        # JS pairing vs Go, value for value
+ALLSHARE_E2E=1 go test ./test/e2e/   # real browser, real agent, real server
+```
+
+### The cross-language tests are not optional
+
+The wire protocol and the pairing exchange are each implemented twice, once in
+Go and once in JavaScript. Two implementations that disagree surface to a user
+as *"that code did not work"* with no way to tell which side is wrong.
+
+So `protocol-conformance.js` encodes every message type in JavaScript and
+compares the bytes against vectors the Go tests emit, and `pairing-interop.js`
+runs the whole key exchange in the browser's WebCrypto against values Go
+produced. These caught a real bug during development: the JavaScript encoder had
+`SizeMouseMove` at 13 rather than 14 and put the button field at offset 12
+rather than 13. Nothing else would have found it before a user did.
+
+The vectors in `shared/pair/testdata/interop.json` are deterministic — fixed
+ephemeral keys, fixed identity public keys. They are regenerated by
+`go test ./shared/pair/` and should produce an empty diff. If they change, the
+key exchange changed, and that is worth a second look.
+
+### The end-to-end test
+
+`ALLSHARE_E2E=1 go test ./test/e2e/` starts a real rendezvous, a real agent with
+a real Pion WebRTC stack, and a real Chromium loading `client/index.html` from a
+real `file://` URL. Nothing in the path is stubbed except the pixels: the
+capture backend replays a pre-encoded VP8 stream, because CI has no desktop.
+
+It asserts what unit tests cannot: that the browser genuinely decodes video, that
+a keystroke typed in Chromium arrives at the agent as the right HID usage, that a
+click lands at the right coordinates, that a session that ends does not leave
+keys held down, and that end-to-end latency over loopback stays under 140 ms —
+which is what caught an eight-deep capture queue adding a quarter of a second for
+nothing.
+
+`TestClientInterface` drives the interface itself in a real browser: the hidden
+developer mode, the service-address policy, and every settings tab in both
+colour schemes.
+
+### Adding a test source
+
+`internal/capture/testsource` replays `testdata/pattern.asvp`, generated by
+`test/tools/mkpattern`. That is what makes the whole system testable on Linux.
+If you need different content, regenerate the pattern rather than stubbing the
+capture interface — the point is that the real encoder path runs.
+
+---
+
+## 4. The constraints that shaped the client
+
+The client runs from `file://`. That is not a preference; the requirement was
+that a Chromebook user double-clicks `index.html` with nothing installed. It
+costs three things, and they explain most of the client's shape:
+
+| Blocked from `file://` | Consequence |
+|---|---|
+| ES modules (fetched with CORS, opaque origin) | Classic `<script>` tags in dependency order, everything on `window.AllShare` |
+| `fetch()` of sibling files | No templates, no JSON config loading, no icon sprite file |
+| Workers from sibling files | Everything runs on the main thread |
+| `@font-face` | System font stack only |
+
+What *does* work, verified rather than assumed: secure context (so WebCrypto and
+`getUserMedia` are available), `localStorage`, IndexedDB, WebRTC, Pointer Lock,
+Keyboard Lock, and Fullscreen.
+
+The three rules, written at the top of `index.html` so nobody has to rediscover
+them:
+
+1. Classic scripts only, in dependency order.
+2. No `fetch` of local files. Anything needed at load is inline.
+3. Everything hangs off one global namespace.
+
+---
+
+## 5. Things that will bite you
+
+### Interceptor registration order in Pion
+
+Interceptors run in **reverse** registration order — the last registered runs
+first. Congestion control must run *after* the TWCC header extension has been
+written, so it must be registered *before* it:
+
+```go
+registry.Add(ccFactory)                                    // runs last
+webrtc.ConfigureTWCCHeaderExtensionSender(engine, registry) // runs before it
+webrtc.ConfigureNack(engine, registry)
+webrtc.ConfigureRTCPReports(registry)
+```
+
+Get this backwards and the pacer rejects every packet because none carries a
+transport sequence number. The symptom is a session that negotiates perfectly
+and sends no video at all.
+
+### The `color-space` header extension
+
+Deliberately **not** registered. Chrome falls back to software decode when it is
+present on some builds, which turns a 3 ms decode into 25 ms. If you add it
+back, check `decoderImplementation` in the client's stats — a hardware decoder's
+name is prefixed by Chromium and that is the only reliable signal.
+
+### Queues are latency
+
+Anywhere a frame can wait is latency with a nicer name. The capture channel is
+`make(chan capture.Frame, 1)` on purpose. If you find yourself increasing a
+buffer to fix a stutter, you are trading something a user notices for something
+they do not.
+
+### Key state must be self-healing
+
+Input rides an **unreliable, unordered** data channel — reliability there would
+mean head-of-line blocking, and a retransmitted mouse move from 200 ms ago is
+worse than no mouse move. So every input packet carries the client's full
+256-bit held-key bitmap and the agent diffs it against its own view. A dropped
+key-up cannot leave a key held down, because the next packet corrects it.
+
+Do not "optimise" the bitmap away. It is 32 bytes on a channel that carries
+kilobytes per second, and it is what makes stuck keys structurally impossible.
+
+### Windows session 0
+
+A Windows service cannot capture the screen or inject input: services live in
+session 0, the desktop does not. The service is therefore a supervisor that
+waits for an active console session and launches a child into it with
+`WTSQueryUserToken` + `CreateProcessAsUser` on `winsta0\default`.
+
+This is also a security boundary, and a valuable one: the supervisor is SYSTEM
+and does almost nothing, while the child — which parses all network input — runs
+as the logged-in user. Do not move network handling into the service.
+
+### `go vet` and `unsafeptr`
+
+The Windows-only files use `unsafe.Pointer` where the Win32 API requires it. The
+uses are isolated in `lockedText` and `writeLocked` and reviewed; the Windows vet
+run uses `-unsafeptr=false`. Do not silence vet more broadly than that.
+
+---
+
+## 6. The wire protocol
+
+Two planes with different needs, so two encodings.
+
+**Input plane** — `shared/protocol/wire.go`. Fixed-size little-endian binary on
+an unreliable, unordered channel. Every message has a compile-time size constant
+and a matching JavaScript encoder. Mouse coordinates are normalised to
+0–65535 so the client does not need to know the PC's resolution.
+
+**Control plane** — `shared/protocol/ctrl.go`. JSON for structural, low-rate
+messages (Hello, Stats, Notice); fixed binary for anything per-frame
+(`CursorState`, `FrameMark`, `Pong`), because those are frequent enough that
+JSON parsing would show up in a profile.
+
+**Signalling** — `shared/protocol/signal.go`. JSON over WebSocket. Every payload
+is signed end-to-end so the server cannot tamper with it; see
+[security.md](security.md), Section 4.4.
+
+If you change any of these, the JavaScript side changes too, and
+`protocol-conformance.js` is what proves you did it right.
+
+---
+
+## 7. Style
+
+Match the surrounding code. Beyond that:
+
+- **Comments explain why, not what.** `// The pacer rejects packets without a
+  transport sequence number` is worth writing; `// increment i` is not.
+- **Error messages are read by users.** "Could not find a path to your PC" and
+  not "ICE_FAILED". The rule is that every string a user can see reads like a
+  sentence a person would say.
+- **Constants get a comment saying how the value was chosen.** `rungDwell = 4 *
+  time.Second` means nothing on its own; the reason it is not 1 or 30 is what
+  matters when someone changes it later.
+- **Never log a secret.** No private keys, no pairing codes, no derived
+  passwords, no clipboard contents. Identities appear as fingerprints.
+
+---
+
+## 8. Releasing
+
+```bash
+export ALLSHARE_VERSION=1.2.0
+bash build/build-server.sh     # dist/server/
+bash build/build-agent.sh      # dist/windows/allshare-agent.exe
+bash build/build-client.sh     # dist/allshare-client.zip
+iscc installer/allshare.iss    # dist/AllShareSetup.exe  (on Windows)
+```
+
+The client's version is a hand-edited constant in `client/js/core/util.js` —
+there is no build step to substitute it, which is the price of shipping plain
+files. Bump it in the same commit as the tag.
