@@ -67,6 +67,7 @@ access from home: **[docs/deployment.md](docs/deployment.md)**.
 | **[Security](docs/security.md)** | Threat model, cryptography, the full security review, deliberate trade-offs |
 | **[Architecture](ARCHITECTURE.md)** | Every major decision: alternatives considered, why rejected, why chosen |
 | **[Developer guide](docs/developer.md)** | Layout, building, testing, and the things that will bite you |
+| **[Testing](docs/testing.md)** | What is proved automatically, what is not, and the manual acceptance run |
 
 ---
 
