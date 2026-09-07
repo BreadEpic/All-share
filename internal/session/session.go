@@ -620,6 +620,20 @@ func (s *Session) openSource() {
 		return
 	}
 	s.source = source
+
+	// Tell the injector which display the client is looking at, so a click is
+	// mapped onto the right monitor rather than the primary one.
+	if aware, ok := s.cfg.Injector.(agentinput.RectAware); ok {
+		info := source.Info()
+		for _, monitor := range info.Monitors {
+			if monitor.ID != info.ActiveMonitor {
+				continue
+			}
+			aware.SetCaptureRect(monitor.X, monitor.Y, monitor.Width, monitor.Height)
+			break
+		}
+	}
+
 	s.quality = NewQualityController(QualityConfig{
 		Source:   source,
 		Settings: settings,
@@ -1065,6 +1079,15 @@ func (s *Session) onCtrlMessage(data []byte) {
 			return
 		}
 		info := s.source.Info()
+		if aware, ok := s.cfg.Injector.(agentinput.RectAware); ok {
+			for _, monitor := range info.Monitors {
+				if monitor.ID != info.ActiveMonitor {
+					continue
+				}
+				aware.SetCaptureRect(monitor.X, monitor.Y, monitor.Width, monitor.Height)
+				break
+			}
+		}
 		s.sendCtrlJSON(protocol.TypeDisplayChanged, protocol.DisplayChanged{
 			Monitors: info.Monitors, ActiveMonitor: info.ActiveMonitor,
 			StreamWidth: info.Width, StreamHeight: info.Height, SessionKind: info.SessionKind,

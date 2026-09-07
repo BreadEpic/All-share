@@ -21,3 +21,7 @@ package-lock.json
 /server/allshare-server
 .scratch/
 /test/e2e/artifacts/
+
+# Native build output
+/agent/native/build/
+/dist/

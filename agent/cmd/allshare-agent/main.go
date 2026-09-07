@@ -33,6 +33,7 @@ import (
 	"github.com/mmc/all-share/internal/agentcore"
 	"github.com/mmc/all-share/internal/capture"
 	"github.com/mmc/all-share/internal/capture/testsource"
+	"github.com/mmc/all-share/internal/clipboard"
 	"github.com/mmc/all-share/internal/config"
 	agentinput "github.com/mmc/all-share/internal/input"
 	"github.com/mmc/all-share/internal/wake"
@@ -100,12 +101,13 @@ Run "allshare-agent <command> -h" for the options of a command.
 
 // runtimeParts is everything a running agent needs, assembled once.
 type runtimeParts struct {
-	cfg      *config.Config
-	identity idkey.PrivateKey
-	provider capture.Provider
-	injector agentinput.Injector
-	wake     *wake.Manager
-	log      *slog.Logger
+	cfg       *config.Config
+	identity  idkey.PrivateKey
+	provider  capture.Provider
+	injector  agentinput.Injector
+	clipboard clipboard.Clipboard
+	wake      *wake.Manager
+	log       *slog.Logger
 }
 
 func assemble(dataDir, captureMode, logLevel string) (*runtimeParts, error) {
@@ -153,9 +155,16 @@ func assemble(dataDir, captureMode, logLevel string) (*runtimeParts, error) {
 		log.Debug("scheduled wake could not be armed", "err", err)
 	}
 
+	board, err := clipboard.New()
+	if err != nil {
+		// Clipboard sharing is a convenience; losing it must not stop a session.
+		log.Info("clipboard sharing is unavailable on this system", "err", err)
+		board = clipboard.Noop{}
+	}
+
 	return &runtimeParts{
 		cfg: cfg, identity: identity, provider: provider,
-		injector: injector, wake: wakeManager, log: log,
+		injector: injector, clipboard: board, wake: wakeManager, log: log,
 	}, nil
 }
 
@@ -191,6 +200,10 @@ func cmdRun(args []string) error {
 	captureMode := flags.String("capture", "auto", "capture backend: auto, desktop or test")
 	logLevel := flags.String("log-level", "", "debug, info, warn or error")
 	pairNow := flags.Bool("pair", false, "show a pairing code as soon as the agent connects")
+	// Set when the Windows service starts this process inside the interactive
+	// session. It only changes presentation: no banner, and logs go to stderr
+	// for the service to collect.
+	supervised := flags.Bool("supervised", false, "started by the ALL SHARE service")
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
@@ -211,7 +224,7 @@ func cmdRun(args []string) error {
 	instance, err := agentcore.New(agentcore.Options{
 		Config: parts.cfg, Identity: parts.identity,
 		Provider: parts.provider, Injector: parts.injector,
-		Wake: parts.wake, Log: parts.log,
+		Clipboard: parts.clipboard, Wake: parts.wake, Log: parts.log,
 	})
 	if err != nil {
 		return err
@@ -235,11 +248,13 @@ func cmdRun(args []string) error {
 		}()
 	}
 
-	fmt.Printf("ALL SHARE is running on %q\n", parts.cfg.DeviceName)
-	fmt.Printf("  This PC's identity: %s\n", parts.identity.Public().Fingerprint())
-	fmt.Printf("  Service:            %s\n", parts.cfg.Rendezvous)
-	fmt.Printf("  Screen capture:     %s\n", parts.provider.Name())
-	fmt.Printf("  Paired devices:     %d\n\n", len(parts.cfg.PairedIDs()))
+	if !*supervised {
+		fmt.Printf("ALL SHARE is running on %q\n", parts.cfg.DeviceName)
+		fmt.Printf("  This PC's identity: %s\n", parts.identity.Public().Fingerprint())
+		fmt.Printf("  Service:            %s\n", parts.cfg.Rendezvous)
+		fmt.Printf("  Screen capture:     %s\n", parts.provider.Name())
+		fmt.Printf("  Paired devices:     %d\n\n", len(parts.cfg.PairedIDs()))
+	}
 
 	err = instance.Run(ctx)
 	if errors.Is(err, context.Canceled) {
@@ -267,7 +282,7 @@ func cmdPair(args []string) error {
 	instance, err := agentcore.New(agentcore.Options{
 		Config: parts.cfg, Identity: parts.identity,
 		Provider: parts.provider, Injector: parts.injector,
-		Wake: parts.wake, Log: parts.log,
+		Clipboard: parts.clipboard, Wake: parts.wake, Log: parts.log,
 	})
 	if err != nil {
 		return err

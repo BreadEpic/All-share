@@ -44,13 +44,24 @@ type Injector interface {
 	Close() error
 }
 
+// RectAware is implemented by injectors that need to know which part of the
+// desktop the client is seeing.
+//
+// The client sends positions normalized against the captured surface. Without
+// the capture rectangle, a click on a second monitor would be mapped onto the
+// primary one.
+type RectAware interface {
+	SetCaptureRect(left, top, width, height int)
+}
+
 // Recorder is an Injector that records what it was asked to do instead of
 // touching a machine. It backs the end-to-end tests, which need to assert that
 // a key press really crossed the network and arrived intact.
 type Recorder struct {
-	Events []Event
-	notify chan Event
-	closed bool
+	Events      []Event
+	CaptureRect [4]int
+	notify      chan Event
+	closed      bool
 }
 
 // EventKind classifies a recorded event.
@@ -134,6 +145,11 @@ func (r *Recorder) ReleaseAll() { r.record(Event{Kind: EventReleaseAll}) }
 // SetPointerMode records a pointer mode change.
 func (r *Recorder) SetPointerMode(relative bool) {
 	r.record(Event{Kind: EventPointerMode, Relative: relative})
+}
+
+// SetCaptureRect records the captured region, so tests can assert the mapping.
+func (r *Recorder) SetCaptureRect(left, top, width, height int) {
+	r.CaptureRect = [4]int{left, top, width, height}
 }
 
 // SystemAction records a system action request.
