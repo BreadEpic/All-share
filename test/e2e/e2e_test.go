@@ -25,6 +25,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -672,6 +673,7 @@ func runDriverExpectingFailure(t *testing.T, s *stack, code string) string {
 func TestReconnectAndServiceOutage(t *testing.T) {
 	skipUnlessEnabled(t)
 	s := startStack(t)
+	baselineGoroutines := runtime.NumGoroutine()
 
 	code, _, err := s.agent.BeginPairing()
 	if err != nil {
@@ -697,12 +699,42 @@ func TestReconnectAndServiceOutage(t *testing.T) {
 	}
 	t.Log("the client recovered a dropped session on its own, and kept streaming " +
 		"while the rendezvous was unreachable")
+
+	// Two sessions have now been created and torn down. The agent is meant to
+	// run for weeks, so a handful of goroutines left behind per session is not
+	// a curiosity — it is the difference between a machine that stays up and one
+	// that has to be restarted every few days.
+	//
+	// Teardown is asynchronous, so the count is allowed to settle rather than
+	// sampled once.
+	settled := 0
+	for i := 0; i < 40; i++ {
+		time.Sleep(100 * time.Millisecond)
+		settled = runtime.NumGoroutine()
+		if settled <= baselineGoroutines+goroutineSlack {
+			break
+		}
+	}
+	if settled > baselineGoroutines+goroutineSlack {
+		buf := make([]byte, 1<<16)
+		buf = buf[:runtime.Stack(buf, true)]
+		t.Errorf("goroutines grew from %d to %d across two sessions; something is not being torn down\n%s",
+			baselineGoroutines, settled, buf)
+	} else {
+		t.Logf("teardown: goroutines settled at %d against a baseline of %d after two sessions",
+			settled, baselineGoroutines)
+	}
 }
 
-// TestQualityControllerDoesNotOscillate exercises the adaptive loop directly.
-//
-// Oscillation is the failure mode that matters: a stream that pumps between two
-// resolutions is more distracting than one that simply sits at the lower one.
+// goroutineSlack is how much drift is tolerated before a growing goroutine
+// count is called a leak. The Go runtime, the HTTP server's idle connections
+// and Pion's own timers all account for a few, and they come and go. In
+// practice two sessions settle within one or two of the baseline, so ten is
+// generous — but a genuine per-session leak grows without bound and clears any
+// fixed threshold, so a tight one would only add flakiness without adding
+// detection.
+const goroutineSlack = 10
+
 // TestClientInterface drives the parts of the interface that need a real
 // browser but no network: the hidden developer mode, the service-address
 // policy as the connection code applies it, and every settings tab in both
@@ -744,6 +776,10 @@ func TestClientInterface(t *testing.T) {
 	t.Logf("interface: %d checks passed in a real browser, dark and light", len(result.Checks))
 }
 
+// TestQualityControllerDoesNotOscillate exercises the adaptive loop directly.
+//
+// Oscillation is the failure mode that matters: a stream that pumps between two
+// resolutions is more distracting than one that simply sits at the lower one.
 func TestQualityControllerDoesNotOscillate(t *testing.T) {
 	provider, err := testsource.New()
 	if err != nil {

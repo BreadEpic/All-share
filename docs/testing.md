@@ -96,6 +96,7 @@ because CI has no desktop.
 | Latency is measured, not assumed | median 49 ms over loopback (fails above 140) |
 | A dropped session recovers on its own | reconnected with a new session ID |
 | A session survives the rendezvous going away | still streaming while the service was down |
+| Sessions are torn down completely | goroutines settled at 8 against a baseline of 7 after two sessions |
 | An unpaired device is refused | by the agent, not only the server |
 
 Plus 49 interface checks: the hidden developer mode (six taps do nothing, the
