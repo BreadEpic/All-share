@@ -156,10 +156,17 @@ is no flag to override it. Signalling carries the SDP — which lists every
 address your devices know about — and the relay credentials for the session, and
 none of that belongs in the clear.
 
-`ws://` remains available for hosts on your own network (loopback, `10/8`,
-`172.16/12`, `192.168/16`, link-local, and `.local` names), because a rendezvous
-running on your own LAN is a real deployment and nobody can get a publicly
-trusted certificate for `192.168.1.10`.
+`ws://` remains available for hosts that cannot be reached from the internet
+(loopback, `10/8`, `172.16/12`, `192.168/16`, `100.64/10`, link-local, and
+`.local` names), because a rendezvous running on your own LAN is a real
+deployment and nobody can get a publicly trusted certificate for
+`192.168.1.10`.
+
+`100.64/10` is RFC 6598 shared address space — where a mesh VPN such as
+Tailscale places its devices. Traffic to one of those addresses is already
+inside an encrypted tunnel, so it is allowed on the same footing as a LAN
+address. That is what makes it possible to reach your own PC from a hotel
+without hosting anything public at all.
 
 ### nginx, if you prefer it
 

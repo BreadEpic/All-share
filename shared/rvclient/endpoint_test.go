@@ -23,6 +23,11 @@ func TestValidateEndpoint(t *testing.T) {
 		"ws://172.20.0.1/rv",
 		"ws://169.254.1.1/rv",
 		"ws://[::1]:8080/rv",
+		// RFC 6598 shared address space: where a mesh VPN puts its devices, and
+		// the only route to your own PC for someone who cannot host a server.
+		"ws://100.64.0.1/rv",
+		"ws://100.101.102.103:8443/rv",
+		"ws://100.127.255.254/rv",
 	}
 	for _, url := range accept {
 		if err := ValidateEndpoint(url); err != nil {
@@ -35,6 +40,10 @@ func TestValidateEndpoint(t *testing.T) {
 		"ws://172.15.0.1/rv",
 		"ws://172.32.0.1/rv",
 		"ws://8.8.8.8/rv",
+		// Either side of 100.64.0.0/10 is ordinary public space.
+		"ws://100.63.255.255/rv",
+		"ws://100.128.0.1/rv",
+		"ws://100.200.1.1/rv",
 		"ws://[2001:db8::1]:8080/rv",
 		"ws://10.example.com/rv",
 		"http://rv.example.com/rv",

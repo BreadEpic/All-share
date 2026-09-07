@@ -67,6 +67,12 @@ group('util', () => {
   ok('ws to 172.15 is refused', U.serviceAddressProblem('ws://172.15.0.1/rv') !== '');
   ok('ws to 172.32 is refused', U.serviceAddressProblem('ws://172.32.0.1/rv') !== '');
   ok('ws to IPv6 loopback is accepted', U.serviceAddressProblem('ws://[::1]:8080/rv') === '');
+  // 100.64.0.0/10 — mesh VPN territory, and the boundaries either side of it.
+  ok('ws to a mesh-VPN address is accepted', U.serviceAddressProblem('ws://100.101.102.103:8443/rv') === '');
+  ok('ws to 100.64.0.1 is accepted', U.serviceAddressProblem('ws://100.64.0.1/rv') === '');
+  ok('ws to 100.127.255.254 is accepted', U.serviceAddressProblem('ws://100.127.255.254/rv') === '');
+  ok('ws to 100.63.255.255 is refused', U.serviceAddressProblem('ws://100.63.255.255/rv') !== '');
+  ok('ws to 100.128.0.1 is refused', U.serviceAddressProblem('ws://100.128.0.1/rv') !== '');
   ok('ws to a public IPv6 is refused', U.serviceAddressProblem('ws://[2001:db8::1]:8080/rv') !== '');
   ok('http is refused', U.serviceAddressProblem('http://rv.example.com/rv') !== '');
   ok('nonsense is refused', U.serviceAddressProblem('not an address') !== '');

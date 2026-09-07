@@ -309,12 +309,16 @@ Two encrypted transports, no plaintext anywhere:
 
   Because the operator, not the code, terminates TLS, the *client* is where the
   requirement is enforced: both the browser client and the Windows agent refuse
-  a `ws://` service address unless the host is on the local network (loopback,
-  `10/8`, `172.16/12`, `192.168/16`, link-local, IPv6 loopback/ULA, or a
-  `.local`/`localhost` name). The carve-out exists because a rendezvous
+  a `ws://` service address unless the host is on a network that cannot be
+  reached from the internet (loopback, `10/8`, `172.16/12`, `192.168/16`,
+  `100.64/10`, link-local, IPv6 loopback/ULA, or a `.local`/`localhost` name). The carve-out exists because a rendezvous
   self-hosted on your own LAN is a legitimate deployment and nobody can get a
   publicly trusted certificate for `192.168.1.10`; demanding one would only
-  teach people to disable the check. Everything reachable from the internet must
+  teach people to disable the check. The `100.64/10` range is RFC 6598 shared
+  address space, included on the same footing: it is where a mesh VPN such as
+  Tailscale puts its devices, and traffic to one is already inside a WireGuard
+  tunnel that encrypts and authenticates it end to end, so a certificate on top
+  would add nothing. Everything reachable from the internet must
   be `wss://`. The rule lives in one function per language —
   `rvclient.ValidateEndpoint` and `AS.Util.serviceAddressProblem` — and the two
   are tested against the same case list so they cannot drift apart.

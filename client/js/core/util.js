@@ -374,7 +374,12 @@ window.AllShare = window.AllShare || {};
       || a === 10                             // 10.0.0.0/8
       || (a === 192 && b === 168)             // 192.168.0.0/16
       || (a === 172 && b >= 16 && b <= 31)    // 172.16.0.0/12
-      || (a === 169 && b === 254);            // link-local
+      || (a === 169 && b === 254)             // link-local
+      // 100.64.0.0/10, RFC 6598 shared address space. Not routable across the
+      // internet, and where a mesh VPN such as Tailscale puts its devices —
+      // traffic to one is already inside an encrypted tunnel. Must match
+      // isSharedAddressSpace in shared/rvclient.
+      || (a === 100 && b >= 64 && b <= 127);
   };
 
   /**

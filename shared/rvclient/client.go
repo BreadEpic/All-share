@@ -123,8 +123,8 @@ func ValidateEndpoint(raw string) error {
 }
 
 // isLocalHost reports whether host names a machine that cannot be reached from
-// the internet: loopback, a private IPv4 range, link-local, unique-local IPv6,
-// or a .local / localhost name.
+// the internet: loopback, a private IPv4 range, shared address space,
+// link-local, unique-local IPv6, or a .local / localhost name.
 func isLocalHost(host string) bool {
 	if host == "" {
 		return false
@@ -137,7 +137,30 @@ func isLocalHost(host string) bool {
 	if ip == nil {
 		return false
 	}
-	return ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast()
+	return ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || isSharedAddressSpace(ip)
+}
+
+// isSharedAddressSpace reports whether ip falls in 100.64.0.0/10 (RFC 6598).
+//
+// The range is not routable across the internet, which is the same property
+// that makes 10/8 and 192.168/16 acceptable for an unencrypted ws:// address.
+// Two things live here in practice, and both are fine:
+//
+//   - A mesh VPN. Tailscale, and others like it, hand out addresses from this
+//     range, and every packet to one is already inside a WireGuard tunnel that
+//     encrypts and authenticates it end to end. Demanding a TLS certificate on
+//     top would buy nothing and would instead shut out the one group who cannot
+//     host a public server — anyone travelling with just their own two machines.
+//   - An ISP using carrier-grade NAT. Traffic stays inside that carrier's
+//     network rather than crossing the open internet, which puts it in the same
+//     category as any other private range: not public, so not held to the
+//     public rule.
+func isSharedAddressSpace(ip net.IP) bool {
+	v4 := ip.To4()
+	if v4 == nil {
+		return false
+	}
+	return v4[0] == 100 && v4[1] >= 64 && v4[1] <= 127
 }
 
 // New constructs a Client. It does not connect; call Run.
