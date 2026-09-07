@@ -1,0 +1,456 @@
+<!doctype html>
+<html lang="en" data-theme="system">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark light">
+<title>ALL SHARE — Connection Test</title>
+
+<!--
+  ALL SHARE — Connection Test
+  Powered by MMC
+
+  A single self-contained page. Double-click it, the way you would the real
+  client, and it checks whether this device and this network can actually run
+  ALL SHARE. It answers one honest question: "will this work for me?"
+
+  It talks to nothing except the same public STUN server the real app uses, and
+  only to find out whether ordinary real-time video traffic can leave this
+  network at all — the same check every video-call troubleshooter runs. It sends
+  no data anywhere, stores nothing, and needs no server of its own.
+-->
+
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #f4f5f8;
+    --card: #ffffff;
+    --ink: #1a1d24;
+    --dim: #5b6472;
+    --line: #e2e5ec;
+    --accent: #4F7DFF;
+    --pass-bg: #e7f6ec; --pass-fg: #1c7a3e;
+    --fail-bg: #fdecec; --fail-fg: #c22f2f;
+    --warn-bg: #fdf3e0; --warn-fg: #a86616;
+    --wait-bg: #eef0f4; --wait-fg: #5b6472;
+    --shadow: 0 1px 2px rgba(20,24,40,.06), 0 6px 24px rgba(20,24,40,.06);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0d0f16; --card: #161a25; --ink: #eef1f7; --dim: #99a2b4;
+      --line: #262c3a; --accent: #6b93ff;
+      --pass-bg: #14311f; --pass-fg: #57d98a;
+      --fail-bg: #3a1a1c; --fail-fg: #ff8a8a;
+      --warn-bg: #3a2c14; --warn-fg: #f2c069;
+      --wait-bg: #1e2431; --wait-fg: #99a2b4;
+      --shadow: 0 1px 2px rgba(0,0,0,.3), 0 8px 30px rgba(0,0,0,.35);
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 15px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    padding: 24px 16px 64px;
+  }
+  .wrap { max-width: 720px; margin: 0 auto; }
+  header { margin-bottom: 6px; }
+  .brand { font-weight: 800; letter-spacing: .04em; font-size: 22px; }
+  .brand span { color: var(--dim); font-weight: 700; }
+  .by { color: var(--dim); font-size: 12.5px; letter-spacing: .12em; text-transform: uppercase; margin-top: 2px; }
+  h1 { font-size: 19px; margin: 22px 0 2px; }
+  .lead { color: var(--dim); margin: 0 0 18px; }
+
+  .verdict {
+    border-radius: 14px; padding: 16px 18px; margin: 0 0 22px;
+    box-shadow: var(--shadow); border: 1px solid var(--line); background: var(--card);
+  }
+  .verdict h2 { margin: 0 0 6px; font-size: 16px; }
+  .verdict p { margin: 0; color: var(--dim); }
+  .verdict.is-pass { border-color: color-mix(in srgb, var(--pass-fg) 40%, var(--line)); }
+  .verdict.is-fail { border-color: color-mix(in srgb, var(--fail-fg) 40%, var(--line)); }
+  .verdict.is-warn { border-color: color-mix(in srgb, var(--warn-fg) 40%, var(--line)); }
+
+  .card {
+    background: var(--card); border: 1px solid var(--line); border-radius: 14px;
+    box-shadow: var(--shadow); padding: 6px 18px; margin-bottom: 18px;
+  }
+  .card h3 { font-size: 13px; letter-spacing: .06em; text-transform: uppercase; color: var(--dim); margin: 16px 2px 8px; }
+
+  .row {
+    display: flex; align-items: flex-start; gap: 12px;
+    padding: 12px 2px; border-top: 1px solid var(--line);
+  }
+  .row:first-of-type { border-top: 0; }
+  .row__main { flex: 1; min-width: 0; }
+  .row__title { font-weight: 600; }
+  .row__desc { color: var(--dim); font-size: 13px; margin-top: 2px; }
+  .pill {
+    flex: none; min-width: 74px; text-align: center;
+    font-size: 12.5px; font-weight: 700; padding: 4px 10px; border-radius: 999px;
+    background: var(--wait-bg); color: var(--wait-fg);
+  }
+  .pill.pass { background: var(--pass-bg); color: var(--pass-fg); }
+  .pill.fail { background: var(--fail-bg); color: var(--fail-fg); }
+  .pill.warn { background: var(--warn-bg); color: var(--warn-fg); }
+
+  .actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: 4px 0 22px; }
+  button {
+    font: inherit; font-weight: 650; cursor: pointer;
+    border: 1px solid var(--line); background: var(--card); color: var(--ink);
+    padding: 9px 16px; border-radius: 10px;
+  }
+  button.primary { background: var(--accent); color: #fff; border-color: transparent; }
+  button:disabled { opacity: .5; cursor: default; }
+
+  .server { margin-top: 4px; }
+  .server label { font-weight: 600; display: block; margin-bottom: 6px; }
+  .server__row { display: flex; gap: 8px; flex-wrap: wrap; }
+  input[type=text] {
+    flex: 1; min-width: 220px; font: inherit; padding: 9px 12px;
+    border: 1px solid var(--line); border-radius: 10px; background: var(--bg); color: var(--ink);
+  }
+  .hint { color: var(--dim); font-size: 12.5px; margin-top: 6px; }
+  footer { color: var(--dim); font-size: 12.5px; margin-top: 26px; text-align: center; }
+  code { background: var(--wait-bg); padding: 1px 6px; border-radius: 6px; font-size: 13px; }
+  .mono { font-family: ui-monospace, "Cascadia Mono", "SF Mono", monospace; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="brand">ALL<span>SHARE</span></div>
+    <div class="by">Powered by MMC</div>
+  </header>
+
+  <h1>Connection Test</h1>
+  <p class="lead">This checks whether this device and this network can run ALL SHARE. It sends nothing anywhere and needs no setup.</p>
+
+  <div class="verdict" id="verdict">
+    <h2 id="verdict-title">Running the checks…</h2>
+    <p id="verdict-body">Give it a few seconds. The network checks can take up to about ten.</p>
+  </div>
+
+  <div class="actions">
+    <button class="primary" id="run">Run the checks again</button>
+    <button id="copy">Copy results</button>
+  </div>
+
+  <div class="card">
+    <h3>This device &amp; browser</h3>
+    <div id="group-browser"></div>
+  </div>
+
+  <div class="card">
+    <h3>Can real-time video work here?</h3>
+    <div id="group-webrtc"></div>
+  </div>
+
+  <div class="card">
+    <h3>Can this network reach out?</h3>
+    <div id="group-network"></div>
+    <div class="server">
+      <label for="server-addr">Optional — test reaching your own ALL SHARE service</label>
+      <div class="server__row">
+        <input type="text" id="server-addr" placeholder="wss://your-service.example.com/rv" spellcheck="false" autocapitalize="off" autocorrect="off">
+        <button id="server-test">Test it</button>
+      </div>
+      <div class="hint">Only fill this in if someone gave you a service address. Leave it blank otherwise.</div>
+      <div id="group-server"></div>
+    </div>
+  </div>
+
+  <footer>ALL SHARE Connection Test · runs entirely on this device · nothing is uploaded</footer>
+</div>
+
+<script>
+'use strict';
+
+// ---- tiny helpers -------------------------------------------------------
+function el(tag, attrs, kids) {
+  var n = document.createElement(tag);
+  if (attrs) for (var k in attrs) {
+    if (k === 'class') n.className = attrs[k];
+    else if (k === 'text') n.textContent = attrs[k];
+    else n.setAttribute(k, attrs[k]);
+  }
+  (kids || []).forEach(function (c) { n.appendChild(c); });
+  return n;
+}
+function delay(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+
+// A row that can be updated as a test resolves.
+function makeRow(group, title, desc) {
+  var pill = el('span', { class: 'pill', text: 'Checking…' });
+  var descEl = el('div', { class: 'row__desc', text: desc || '' });
+  var row = el('div', { class: 'row' }, [
+    el('div', { class: 'row__main' }, [ el('div', { class: 'row__title', text: title }), descEl ]),
+    pill
+  ]);
+  group.appendChild(row);
+  return {
+    set: function (state, text, desc2) {
+      pill.className = 'pill ' + state;
+      pill.textContent = text;
+      if (desc2 !== undefined) descEl.textContent = desc2;
+    }
+  };
+}
+
+var results = []; // for the copy button
+function record(name, state, note) { results.push({ name: name, state: state, note: note || '' }); }
+
+// ---- the run ------------------------------------------------------------
+var groups = {
+  browser: document.getElementById('group-browser'),
+  webrtc: document.getElementById('group-webrtc'),
+  network: document.getElementById('group-network')
+};
+
+var scores = { pass: 0, warn: 0, fail: 0 };
+function tally(state) { if (scores[state] !== undefined) scores[state]++; }
+
+async function runAll() {
+  document.getElementById('run').disabled = true;
+  groups.browser.innerHTML = '';
+  groups.webrtc.innerHTML = '';
+  groups.network.innerHTML = '';
+  results = [];
+  scores = { pass: 0, warn: 0, fail: 0 };
+  setVerdict('wait', 'Running the checks…', 'Give it a few seconds. The network checks can take up to about ten.');
+
+  await checkBrowser();
+  await checkWebRTC();
+  await checkNetwork();
+
+  finalVerdict();
+  document.getElementById('run').disabled = false;
+}
+
+// --- 1. browser capabilities (all instant, all local) --------------------
+async function checkBrowser() {
+  // Ed25519 is the one that cannot be told by looking — only the attempt reveals it.
+  var ed = makeRow(groups.browser, 'Modern security (Ed25519)',
+    'ALL SHARE needs this. Chrome 137 and up have it — that is May 2025 or newer.');
+  var edOk = false;
+  try {
+    await crypto.subtle.generateKey({ name: 'Ed25519' }, false, ['sign', 'verify']);
+    edOk = true;
+    ed.set('pass', 'Yes', 'Your browser is new enough.');
+  } catch (e) {
+    ed.set('fail', 'No', 'This browser is too old. On a Chromebook: Settings → About ChromeOS → Check for updates.');
+  }
+  record('Ed25519', edOk ? 'pass' : 'fail'); tally(edOk ? 'pass' : 'fail');
+
+  simple('Secure page', typeof self !== 'undefined' && self.isSecureContext,
+    'Needed so the browser will allow the camera-style features ALL SHARE uses.',
+    'Yes', 'No — open the file directly, do not view it through some other app.');
+
+  simple('Video connections (WebRTC)', typeof RTCPeerConnection !== 'undefined',
+    'The technology that carries the picture and sound.',
+    'Supported', 'Missing — this browser cannot run ALL SHARE.');
+
+  simple('Live messaging (WebSocket)', typeof WebSocket !== 'undefined',
+    'How your devices are first introduced.',
+    'Supported', 'Missing.');
+
+  simple('Mouse capture (Pointer Lock)', 'requestPointerLock' in Element.prototype,
+    'Lets games and design apps capture the mouse properly.',
+    'Available', 'Not available — most things still work, games may not.', true);
+
+  simple('Full keyboard (Keyboard Lock)', !!(navigator.keyboard && navigator.keyboard.lock),
+    'Lets Alt+Tab and similar reach the PC instead of your browser.',
+    'Available', 'Not available — Alt+Tab will stay on this device (normal on Firefox/Safari).', true);
+
+  simple('Fullscreen', !!(document.documentElement.requestFullscreen),
+    'For a borderless, full-screen session.',
+    'Available', 'Not available.', true);
+
+  var storeOk = false;
+  try { localStorage.setItem('_astest', '1'); localStorage.removeItem('_astest'); storeOk = true; } catch (e) {}
+  simple('Remembers your settings', storeOk,
+    'So you do not re-enter everything each time.',
+    'Yes', 'No — settings will not be saved (a very locked-down profile).', true);
+
+  // Report the browser, for context, never pass/fail.
+  var bn = makeRow(groups.browser, 'This browser', navigator.userAgent);
+  bn.set('wait', 'Info', navigator.userAgent);
+}
+
+function simple(title, ok, desc, passText, failText, warnOnFail) {
+  var r = makeRow(groups.browser, title, desc);
+  var state = ok ? 'pass' : (warnOnFail ? 'warn' : 'fail');
+  r.set(state, ok ? 'Pass' : (warnOnFail ? 'Limited' : 'Fail'), ok ? passText : failText);
+  record(title, state); tally(state);
+}
+
+// --- 2. does WebRTC work at all, right here on this machine --------------
+// Two connections in the same page connect to each other. No network needed;
+// if this fails, the browser itself cannot do it and nothing else matters.
+async function checkWebRTC() {
+  var r = makeRow(groups.webrtc, 'WebRTC can form a connection',
+    'Proves the browser can do this at all, before we even involve the network.');
+  var ok = await loopbackTest().catch(function () { return false; });
+  if (ok) r.set('pass', 'Yes', 'The browser opened a direct data connection to itself successfully.');
+  else r.set('fail', 'No', 'The browser could not open a connection even to itself. It may be blocked by a policy on this device.');
+  record('WebRTC loopback', ok ? 'pass' : 'fail'); tally(ok ? 'pass' : 'fail');
+}
+
+function loopbackTest() {
+  return new Promise(function (resolve) {
+    var a, b, done = false;
+    function finish(v) { if (done) return; done = true; try { a.close(); b.close(); } catch (e) {} resolve(v); }
+    try {
+      a = new RTCPeerConnection();
+      b = new RTCPeerConnection();
+    } catch (e) { return finish(false); }
+    var dc = a.createDataChannel('t');
+    dc.onopen = function () { finish(true); };
+    b.ondatachannel = function (ev) { ev.channel.onopen = function () { finish(true); }; };
+    a.onicecandidate = function (e) { if (e.candidate) b.addIceCandidate(e.candidate).catch(function () {}); };
+    b.onicecandidate = function (e) { if (e.candidate) a.addIceCandidate(e.candidate).catch(function () {}); };
+    a.createOffer().then(function (o) { return a.setLocalDescription(o); })
+      .then(function () { return b.setRemoteDescription(a.localDescription); })
+      .then(function () { return b.createAnswer(); })
+      .then(function (ans) { return b.setLocalDescription(ans); })
+      .then(function () { return a.setRemoteDescription(b.localDescription); })
+      .catch(function () { finish(false); });
+    setTimeout(function () { finish(false); }, 6000);
+  });
+}
+
+// --- 3. can real-time traffic leave this network -------------------------
+// Ask a public STUN server "what is my public address?" — exactly what every
+// video-calling app does. A reply (a "srflx" candidate) means UDP can get out
+// and come back, which is what ALL SHARE's fast direct path needs.
+async function checkNetwork() {
+  var r = makeRow(groups.network, 'Real-time traffic can leave this network',
+    'Checks whether this network lets video-call traffic out, using the same public helper the app uses.');
+  var res = await stunTest();
+
+  if (res.srflx) {
+    r.set('pass', 'Yes', 'This network let the traffic out and back. A direct, low-latency connection should be possible.');
+    record('STUN reachability', 'pass');
+    tally('pass');
+  } else if (res.host) {
+    r.set('fail', 'Blocked', 'The browser worked, but this network did not let the traffic out. This is the usual sign of a filtered network (school, work, or a managed device).');
+    record('STUN reachability', 'fail');
+    tally('fail');
+  } else {
+    r.set('warn', 'Unclear', 'No answer either way within the time limit. Could be a slow network or a partial block.');
+    record('STUN reachability', 'warn');
+    tally('warn');
+  }
+
+  var types = Object.keys(res.types);
+  var detail = makeRow(groups.network, 'Connection routes found',
+    types.length ? types.join(', ') : 'none');
+  detail.set('wait', 'Info', types.length ? ('Types seen: ' + types.join(', ')) : 'No routes were discovered at all.');
+}
+
+function stunTest() {
+  return new Promise(function (resolve) {
+    var pc, done = false;
+    var out = { host: false, srflx: false, relay: false, types: {} };
+    function finish() { if (done) return; done = true; try { pc.close(); } catch (e) {} resolve(out); }
+    try {
+      pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
+    } catch (e) { return finish(); }
+    pc.createDataChannel('probe');
+    pc.onicecandidate = function (e) {
+      if (!e.candidate) { return finish(); } // null = gathering finished
+      var c = e.candidate.candidate || '';
+      var m = c.match(/ typ (host|srflx|prflx|relay) /);
+      if (m) {
+        out.types[m[1]] = true;
+        if (m[1] === 'host') out.host = true;
+        if (m[1] === 'srflx') out.srflx = true;
+        if (m[1] === 'relay') out.relay = true;
+      }
+      if (out.srflx) finish(); // got what we needed
+    };
+    pc.createOffer().then(function (o) { return pc.setLocalDescription(o); }).catch(finish);
+    setTimeout(finish, 9000);
+  });
+}
+
+// --- the optional "reach my own server" check ----------------------------
+document.getElementById('server-test').addEventListener('click', function () {
+  var addr = document.getElementById('server-addr').value.trim();
+  var group = document.getElementById('group-server');
+  group.innerHTML = '';
+  if (!addr) { makeRow(group, 'Nothing to test', '').set('warn', 'Empty', 'Enter a wss:// address first, or leave it blank.'); return; }
+  if (!/^wss?:\/\//i.test(addr)) addr = 'wss://' + addr;
+  var r = makeRow(group, 'Reaching ' + addr, 'Trying to open a connection…');
+  var ws, done = false;
+  function finish(state, text, desc) { if (done) return; done = true; r.set(state, text, desc); try { ws.close(); } catch (e) {} }
+  try { ws = new WebSocket(addr); } catch (e) { return finish('fail', 'Bad address', 'That is not a valid address.'); }
+  ws.onopen = function () { finish('pass', 'Reached', 'The server answered. Your network lets you reach it.'); };
+  ws.onerror = function () { finish('fail', 'Blocked', 'Could not reach it — blocked by this network, or the address is wrong or offline.'); };
+  ws.onclose = function () { finish('fail', 'Blocked', 'The connection closed before it opened — usually a network block.'); };
+  setTimeout(function () { finish('fail', 'Timed out', 'No answer in ten seconds. Most likely blocked by this network.'); }, 10000);
+});
+
+// ---- verdict ------------------------------------------------------------
+function setVerdict(kind, title, body) {
+  var v = document.getElementById('verdict');
+  v.className = 'verdict' + (kind === 'wait' ? '' : ' is-' + kind);
+  document.getElementById('verdict-title').textContent = title;
+  document.getElementById('verdict-body').textContent = body;
+}
+
+function has(name, state) {
+  return results.some(function (r) { return r.name === name && r.state === state; });
+}
+
+function finalVerdict() {
+  // The three things that actually decide it.
+  var edFail = has('Ed25519', 'fail');
+  var rtcFail = has('WebRTC loopback', 'fail');
+  var netPass = has('STUN reachability', 'pass');
+  var netFail = has('STUN reachability', 'fail');
+
+  if (edFail) {
+    setVerdict('fail', 'This browser is too old',
+      'ALL SHARE needs Chrome 137 or newer (May 2025). Update the browser first — on a Chromebook, Settings → About ChromeOS → Check for updates — then run this again.');
+    return;
+  }
+  if (rtcFail) {
+    setVerdict('fail', 'This device is blocking video connections',
+      'The browser could not open a connection even to itself, which points to a policy on this device — common on a managed or school-issued device. ALL SHARE cannot run here.');
+    return;
+  }
+  if (netPass) {
+    setVerdict('pass', 'Good — this should work',
+      'Your browser is capable and this network lets real-time traffic out. You still need one small service somewhere that both devices can reach, but the hard part — your network — is not in the way.');
+    return;
+  }
+  if (netFail) {
+    setVerdict('fail', 'This network is blocking the way out',
+      'Your device and browser are fine, but this network did not let real-time traffic out — the classic sign of a filtered school, work, or managed-device network. On a network like this, ALL SHARE can only work if your PC is on the SAME network as this device. Reaching across to a different network would mean getting around that network’s filter, which is not something this tool does.');
+    return;
+  }
+  setVerdict('warn', 'Couldn’t tell for certain',
+    'The network check did not give a clear answer within the time limit — it may be slow or only partly blocked. Try again on a steadier connection. Your device and browser themselves are capable.');
+}
+
+// ---- copy results -------------------------------------------------------
+document.getElementById('copy').addEventListener('click', function () {
+  var lines = ['ALL SHARE Connection Test', new Date().toString(), navigator.userAgent, ''];
+  results.forEach(function (r) { lines.push('[' + r.state.toUpperCase() + '] ' + r.name + (r.note ? ' — ' + r.note : '')); });
+  lines.push('', 'Verdict: ' + document.getElementById('verdict-title').textContent);
+  var text = lines.join('\n');
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(function () {
+      var b = document.getElementById('copy'); var t = b.textContent; b.textContent = 'Copied';
+      setTimeout(function () { b.textContent = t; }, 1500);
+    }).catch(function () { window.prompt('Copy the results:', text); });
+  } else {
+    window.prompt('Copy the results:', text);
+  }
+});
+
+document.getElementById('run').addEventListener('click', runAll);
+runAll();
+</script>
+</body>
+</html>
