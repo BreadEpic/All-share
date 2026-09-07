@@ -563,6 +563,7 @@
       case 'toggle-audio': this.toggleAudio(); break;
       case 'quality': this.showQualityMenu(); break;
       case 'displays': this.showDisplayMenu(); break;
+      case 'send-keys': this.showSendKeysMenu(); break;
       case 'toggle-hud': this.toggleHud(); break;
       case 'fullscreen': this.toggleFullscreen(); break;
       case 'disconnect': this.app.disconnect('user disconnected'); break;
@@ -788,6 +789,57 @@
     this._openPopover('Displays', list);
   };
 
+  /**
+   * Actions the PC can perform that a keystroke cannot reach.
+   *
+   * Ctrl+Alt+Delete is the reason this menu exists. Windows reserves the
+   * sequence so that no program can imitate a sign-in screen — SendInput
+   * physically cannot produce it, which is a security property worth having,
+   * not a limitation to route around. The only supported way is SendSAS, and
+   * only the SYSTEM service may call it, so the request travels to the agent as
+   * an action rather than as three key presses.
+   */
+  SessionUI.prototype.showSendKeysMenu = function () {
+    const self = this;
+
+    const action = function (name, title, description, icon, sentHint) {
+      return U.h('button', {
+        class: 'choice',
+        onclick: function () {
+          self._closePopover();
+          if (!self.session) return;
+          self.session.sendCtrl(P.TYPE_SYSTEM_ACTION, { action: name });
+          self.hint(sentHint);
+        }
+      }, [
+        U.h('span', { class: 'choice__icon', html: AS.Icons.get(icon) }),
+        U.h('span', { class: 'choice__main' }, [
+          U.h('span', { class: 'choice__title', text: title }),
+          U.h('span', { class: 'choice__desc', text: description })
+        ])
+      ]);
+    };
+
+    const wrap = U.h('div', {}, [
+      U.h('p', {
+        class: 'popover__sub', style: { marginBottom: '10px' },
+        text: 'Everything else you type goes straight to the PC. These few are handled by Windows itself.'
+      }),
+      U.h('div', { class: 'choicelist' }, [
+        action('sas', 'Ctrl + Alt + Delete',
+          'Opens the Windows security screen',
+          'shield', 'Sent Ctrl+Alt+Delete'),
+        action('lock', 'Lock the PC',
+          'Same as pressing Windows + L at the PC',
+          'shield', 'Locking your PC'),
+        action('displayOn', 'Wake the screen',
+          'If the PC is showing a black picture because its screen went to sleep',
+          'sun', 'Waking the screen')
+      ])
+    ]);
+    this._openPopover('Send to the PC', wrap);
+  };
+
   SessionUI.prototype.showClipboardMenu = function () {
     const self = this;
     const wrap = U.h('div', {}, [
@@ -801,7 +853,18 @@
             try {
               const text = await navigator.clipboard.readText();
               if (!text) { self.hint('Nothing to send — your clipboard is empty.'); return; }
-              self.session.sendCtrl(P.TYPE_CLIPBOARD_IN, { text: text.slice(0, 65536) });
+              // Same limit and the same refusal as a normal paste: the agent
+              // measures UTF-8 bytes, so slicing characters here would send
+              // something it rejects.
+              if (U.utf8(text).length > P.MAX_CLIPBOARD_BYTES) {
+                UI.toast({
+                  kind: 'warn',
+                  title: 'That is too much text to share',
+                  text: 'ALL SHARE can share up to 64 KB of copied text at a time. Nothing was sent.'
+                });
+                return;
+              }
+              self.session.sendCtrl(P.TYPE_CLIPBOARD_IN, { text: text });
               self.hint('Clipboard sent to your PC');
             } catch (err) {
               UI.toast({

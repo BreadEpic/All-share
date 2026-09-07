@@ -339,6 +339,28 @@ async function main() {
     relativeMoves: relativeMoves
   };
 
+  // Ctrl+Alt+Delete and friends. These cannot be produced by a keystroke —
+  // Windows reserves the sequence so no program can imitate a sign-in screen —
+  // so they travel as actions and are driven from the toolbar.
+  const sysActions = await page.evaluate(async () => {
+    const ui = window.AllShare.app.sessionUI;
+    const chosen = [];
+    for (const label of ['Ctrl + Alt + Delete', 'Lock the PC', 'Wake the screen']) {
+      ui.showSendKeysMenu();
+      await new Promise((r) => setTimeout(r, 60));
+      const buttons = Array.from(document.querySelectorAll('.choice'));
+      const button = buttons.find((b) => b.textContent.indexOf(label) === 0);
+      if (!button) { chosen.push({ label, found: false }); continue; }
+      button.click();
+      chosen.push({ label, found: true });
+      await new Promise((r) => setTimeout(r, 120));
+    }
+    return chosen;
+  });
+  await page.waitForTimeout(200);
+  step('system-actions-sent', sysActions);
+  out.systemActions = sysActions;
+
   // A held key that is never released, so the test can prove the agent is told
   // to let go when the session ends rather than leaving it stuck down.
   await page.keyboard.down('KeyW');

@@ -151,9 +151,10 @@ sized for the worst case penalises every frame.
 
 ### Check whether you are being relayed
 
-Open the performance panel (Settings → toggle **Show performance details**, or
-Ctrl+Shift+D). If the route says **relay**, your traffic is going through a
-server instead of directly, typically adding 20–50 ms.
+Open the performance panel — the pulse button in the session toolbar, or
+**Settings → Advanced → Show performance details** to have it open every time.
+If the route says **relay**, your traffic is going through a server instead of
+directly, typically adding 20–50 ms.
 
 Usually this means UDP is blocked or both ends are behind carrier-grade NAT.
 Sometimes it clears on a reconnect. If it is permanent, the network is the
@@ -174,8 +175,9 @@ different things.
 ### Lower the picture size
 
 Streaming 1440p when you are watching on a 1366×768 Chromebook screen wastes
-bandwidth and encoder time for detail you cannot see. Settings → Picture size →
-match your screen, or leave it on Auto.
+bandwidth and encoder time for detail you cannot see. **Settings → Streaming → Picture
+size** — match your screen, or leave it on Auto. The quality button in the
+session toolbar changes it without leaving the session.
 
 ### Cap the frame rate
 
@@ -191,7 +193,8 @@ playing video keeps every frame different and defeats the skip-unchanged path.
 
 ## 7. Reading the performance panel
 
-Ctrl+Shift+D, or Settings → **Show performance details**.
+The pulse button in the session toolbar, or **Settings → Advanced → Show
+performance details** to keep it on.
 
 | Row | Good | Concerning | What it means |
 |---|---|---|---|

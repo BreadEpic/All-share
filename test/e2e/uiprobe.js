@@ -146,6 +146,75 @@ async function checkServiceAddressPolicy(browser) {
   }
 }
 
+async function checkSessionMenus(browser) {
+  // Every popover in the session toolbar, opened and measured.
+  //
+  // These are pure-CSS failures that no assertion about the DOM would catch:
+  // the title and description in a choice row are both spans, so without an
+  // explicit display they render as one run-on line — "Ctrl + Alt + DeleteOpens
+  // the Windows security screen". The check is geometric: the description must
+  // start below the title, not beside it.
+  const context = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+  const page = await context.newPage();
+  const thrown = [];
+  page.on('pageerror', (err) => thrown.push(String(err)));
+  try {
+    await page.goto('file://' + CLIENT);
+    await page.waitForFunction(() => window.AllShare && window.AllShare.app && window.AllShare.app.sessionUI);
+    await page.evaluate(() => {
+      const app = window.AllShare.app;
+      app.home.hide();
+      app.sessionUI.root.hidden = false;
+      const overlay = document.querySelector('[data-el="overlay"]');
+      if (overlay) overlay.hidden = true;
+    });
+
+    const menus = {
+      'send-to-PC': 'showSendKeysMenu',
+      quality: 'showQualityMenu',
+      clipboard: 'showClipboardMenu'
+    };
+    for (const [label, method] of Object.entries(menus)) {
+      const result = await page.evaluate(async (name) => {
+        const ui = window.AllShare.app.sessionUI;
+        ui[name]();
+        await new Promise((r) => setTimeout(r, 120));
+        const rows = Array.from(document.querySelectorAll('.choice'));
+        const measured = rows.map((row) => {
+          const title = row.querySelector('.choice__title');
+          const desc = row.querySelector('.choice__desc');
+          if (!title || !desc) return { stacked: true, text: title ? title.textContent : '' };
+          const t = title.getBoundingClientRect();
+          const d = desc.getBoundingClientRect();
+          return { stacked: d.top >= t.bottom - 1, text: title.textContent };
+        });
+        // Nothing may overflow the popover.
+        const popover = document.querySelector('.popover');
+        const box = popover ? popover.getBoundingClientRect() : null;
+        const overflows = box
+          ? rows.some((r) => {
+              const b = r.getBoundingClientRect();
+              return b.right > box.right + 1 || b.left < box.left - 1;
+            })
+          : false;
+        ui._closePopover();
+        return { rows: measured, overflows, count: rows.length, onScreen: !!box && box.top >= 0 && box.bottom <= window.innerHeight };
+      }, method);
+
+      check(label + ' menu has rows', result.count > 0, String(result.count));
+      check(label + ' menu fits on screen', result.onScreen);
+      check(label + ' menu does not overflow its popover', !result.overflows);
+      for (const row of result.rows) {
+        check(label + ': "' + row.text.slice(0, 28) + '" reads on two lines', row.stacked);
+      }
+    }
+
+    check('the page threw nothing', thrown.length === 0, thrown.join(' | '));
+  } finally {
+    await context.close();
+  }
+}
+
 async function checkSettingsPersist(browser) {
   // Settings must survive a reload, and must survive storage being unavailable.
   // A Chromebook in a restricted profile throws on localStorage rather than
@@ -304,6 +373,7 @@ async function main() {
   try {
     await checkDeveloperMode(browser);
     await checkServiceAddressPolicy(browser);
+    await checkSessionMenus(browser);
     await checkSettingsPersist(browser);
     await checkStorageFailureIsSurvivable(browser);
     await checkOldBrowserRefusal(browser);

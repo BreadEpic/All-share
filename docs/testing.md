@@ -93,17 +93,21 @@ because CI has no desktop.
 | Oversized clipboard is refused, not truncated | 80 KB paste never reached the PC |
 | Ending a session releases held input | the agent was told to let go |
 | The local cursor is drawn | 1 shape received, 199 pixels painted |
+| Ctrl+Alt+Delete reaches the agent | 3 privileged actions crossed, chosen from the real menu |
+| Forgetting a device takes effect at once | the running agent dropped it with no restart |
 | Latency is measured, not assumed | median 49 ms over loopback (fails above 140) |
 | A dropped session recovers on its own | reconnected with a new session ID |
 | A session survives the rendezvous going away | still streaming while the service was down |
 | Sessions are torn down completely | goroutines settled at 8 against a baseline of 7 after two sessions |
 | An unpaired device is refused | by the agent, not only the server |
 
-Plus 49 interface checks: the hidden developer mode (six taps do nothing, the
+Plus 67 interface checks: the hidden developer mode (six taps do nothing, the
 seventh works, a stale run does not accumulate), the service-address policy, all
-six settings tabs opening in both colour schemes, settings surviving a reload,
-the app surviving `localStorage` that throws, and an old browser being refused
-with a reason.
+six settings tabs opening in both colour schemes, every session menu measured
+geometrically (a title and its description must stack, not run together — a
+pure-CSS failure no DOM assertion would catch), settings surviving a reload, the
+app surviving `localStorage` that throws, and an old browser being refused with
+a reason.
 
 ---
 

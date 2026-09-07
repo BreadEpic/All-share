@@ -89,6 +89,7 @@ mouse and comes back when you move it again.
 | **Mouse Lock** | Captures your mouse for games and 3D applications |
 | **All Keys** | Sends every key, including Alt+Tab and the Windows key |
 | **Clipboard** | Shares copied text between the two devices |
+| **Send to the PC** | Ctrl+Alt+Delete, lock the PC, wake its screen |
 | **Sound** | Turns your PC's sound on or off |
 | **Balanced** | Switches between Gaming, Balanced and Desktop |
 | **Displays** | Chooses which monitor to see (if your PC has several) |
@@ -137,8 +138,10 @@ A few things are worth knowing:
 Without both, your own device keeps them.
 
 **Ctrl+Alt+Delete** is special. Windows deliberately reserves it so that no
-program can imitate a sign-in screen. ALL SHARE sends it through the Windows
-service instead, which is allowed to. Use the toolbar rather than pressing it.
+program can imitate a sign-in screen — nothing ALL SHARE could type would ever
+produce it. Use the **keyboard button** in the toolbar instead, which asks the
+Windows service to do it. The same menu can lock the PC and wake its screen if
+it has gone black.
 
 **On a Chromebook,** the top row (back, refresh, brightness, volume) is sent as
 F1 to F12, because that is what Windows programs expect. You can turn that off in

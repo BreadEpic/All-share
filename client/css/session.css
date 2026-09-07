@@ -248,6 +248,10 @@
 .choice[aria-pressed="true"] { background: var(--accent-soft); border-color: color-mix(in srgb, var(--accent) 40%, transparent); }
 .choice__icon { width: 18px; height: 18px; flex: none; color: var(--text-dim); }
 .choice[aria-pressed="true"] .choice__icon { color: var(--accent); }
+/* Title and description are spans, so they need to be made block-level or they
+   run together on one line — "Ctrl + Alt + DeleteOpens the Windows security
+   screen". This affects every popover choice list: quality, displays,
+   clipboard and send-to-PC. */
 .choice__main { flex: 1; min-width: 0; }
-.choice__title { font-size: 13.5px; font-weight: 600; }
-.choice__desc { font-size: 11.5px; color: var(--text-dim); }
+.choice__title { display: block; font-size: 13.5px; font-weight: 600; }
+.choice__desc { display: block; margin-top: 2px; font-size: 11.5px; color: var(--text-dim); line-height: 1.4; }

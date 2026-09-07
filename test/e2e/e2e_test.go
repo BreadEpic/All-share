@@ -238,6 +238,10 @@ type driverResult struct {
 		RefusedOversize bool   `json:"refusedOversize"`
 		Received        string `json:"received"`
 	} `json:"clipboard"`
+	SystemActions []struct {
+		Label string `json:"label"`
+		Found bool   `json:"found"`
+	} `json:"systemActions"`
 	Lock struct {
 		Fullscreen         bool `json:"fullscreen"`
 		Pointer            bool `json:"pointer"`
@@ -613,6 +617,46 @@ func TestFullSession(t *testing.T) {
 		t.Logf("cursor: %d shape(s) received, %d pixels painted locally at (%d,%d)",
 			result.Cursor.Shapes, result.Cursor.PaintedPixels,
 			result.Cursor.State.X, result.Cursor.State.Y)
+	}
+
+	// --- Privileged actions the keyboard cannot reach. ---
+	//
+	// Ctrl+Alt+Delete is reserved by Windows precisely so that no program can
+	// imitate a sign-in screen, and SendInput physically cannot produce it. The
+	// only supported route is SendSAS from the SYSTEM service, so the request
+	// crosses as an action rather than as three key presses — and that path has
+	// to be reachable from the interface, not just present in the protocol.
+	wantActions := map[string]string{
+		"Ctrl + Alt + Delete": "sas",
+		"Lock the PC":         "lock",
+		"Wake the screen":     "displayOn",
+	}
+	gotActions := map[string]bool{}
+	for _, event := range events {
+		if event.Kind == agentinput.EventSystem {
+			gotActions[event.Action] = true
+		}
+	}
+	for _, chosen := range result.SystemActions {
+		if !chosen.Found {
+			t.Errorf("the %q action is documented but not offered in the interface", chosen.Label)
+			continue
+		}
+		want := wantActions[chosen.Label]
+		if want == "" {
+			t.Errorf("the interface offers an action %q that this test does not know about", chosen.Label)
+			continue
+		}
+		if !gotActions[want] {
+			t.Errorf("%q was chosen in the browser but the agent never received %q", chosen.Label, want)
+		}
+	}
+	if len(result.SystemActions) != len(wantActions) {
+		t.Errorf("expected %d privileged actions in the menu, the browser found %d",
+			len(wantActions), len(result.SystemActions))
+	} else if len(gotActions) == len(wantActions) {
+		t.Logf("system actions: %d privileged requests crossed to the agent, Ctrl+Alt+Delete included",
+			len(gotActions))
 	}
 
 	// --- Forgetting a device is final, and takes effect at once. ---
