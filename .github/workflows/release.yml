@@ -219,12 +219,26 @@ jobs:
             echo "path=" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Create the release
+      - name: Create or update the release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           tag="${{ steps.stage.outputs.tag }}"
           notes="${{ steps.notes.outputs.path }}"
+
+          # A release may already exist: creating the tag through the GitHub web
+          # UI makes one, and that also fires this workflow. Attaching the files
+          # to what is there beats failing and leaving a release with no
+          # downloads on it.
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "a release already exists for $tag; attaching the files to it"
+            gh release upload "$tag" release/* --clobber
+            if [ -n "$notes" ]; then
+              gh release edit "$tag" --notes-file "$notes" --title "ALL SHARE $tag"
+            fi
+            exit 0
+          fi
+
           args=(release create "$tag"
             --title "ALL SHARE $tag"
             --verify-tag
