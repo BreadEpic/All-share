@@ -37,12 +37,15 @@ var patternData []byte
 
 // Provider opens synthetic capture sources.
 type Provider struct {
-	frames  []frame
-	width   int
-	height  int
-	fps     int
-	mu      sync.Mutex
-	sources []*Source
+	frames []frame
+	width  int
+	height int
+	fps    int
+	// extraMonitor lets a test simulate a screen being plugged in mid-session,
+	// which is the one display change a client cannot discover any other way.
+	extraMonitor atomic.Bool
+	mu           sync.Mutex
+	sources      []*Source
 }
 
 type frame struct {
@@ -76,11 +79,22 @@ func (p *Provider) Capabilities() []capture.Capability {
 
 // Monitors reports a single synthetic display.
 func (p *Provider) Monitors() []protocol.Monitor {
-	return []protocol.Monitor{{
+	monitors := []protocol.Monitor{{
 		ID: 0, Name: "Test display", Width: p.width, Height: p.height,
 		Primary: true, RefreshHz: p.fps, ScalePercent: 100,
 	}}
+	if p.extraMonitor.Load() {
+		monitors = append(monitors, protocol.Monitor{
+			ID: 1, Name: "Second display", X: p.width, Width: 1280, Height: 720,
+			RefreshHz: p.fps, ScalePercent: 100,
+		})
+	}
+	return monitors
 }
+
+// PlugMonitor simulates a screen being connected or disconnected, so tests can
+// exercise the path that tells a running client its display list changed.
+func (p *Provider) PlugMonitor(present bool) { p.extraMonitor.Store(present) }
 
 // Open starts a replay session.
 func (p *Provider) Open(opts capture.Options) (capture.Source, error) {
@@ -198,12 +212,14 @@ func (s *Source) SetResolution(width, height int) error {
 	return fmt.Errorf("%w: the test pattern is a fixed %dx%d", capture.ErrUnsupported, s.info.Width, s.info.Height)
 }
 
-// SetMonitor accepts only the single synthetic display.
+// SetMonitor accepts any display the provider currently reports.
 func (s *Source) SetMonitor(id int) error {
-	if id != 0 {
-		return fmt.Errorf("%w: the test pattern has one display", capture.ErrUnsupported)
+	for _, monitor := range s.provider.Monitors() {
+		if monitor.ID == id {
+			return nil
+		}
 	}
-	return nil
+	return fmt.Errorf("%w: no display %d", capture.ErrUnsupported, id)
 }
 
 // SetPreset is accepted and ignored.

@@ -339,6 +339,31 @@ async function main() {
     relativeMoves: relativeMoves
   };
 
+  // A screen plugged in mid-session must show up in the display picker without
+  // reconnecting. The agent detects the change; here we wait for it to arrive.
+  const displays = await page.evaluate(async (startedWith) => {
+    const session = window.AllShare.app.session;
+    const count = () => ((session.hello || {}).monitors || []).length;
+
+    // The change may already have arrived — the agent notices on its own clock,
+    // not ours — so check the current state before waiting for an event.
+    let after = count() > startedWith ? count() : null;
+    if (after === null) {
+      after = await new Promise((resolve) => {
+        const timer = setTimeout(() => resolve(null), 12000);
+        session.on('displayChanged', function (body) {
+          clearTimeout(timer);
+          resolve(body && body.monitors ? body.monitors.length : 0);
+        });
+      });
+    }
+    await new Promise((r) => setTimeout(r, 100));
+    const button = document.querySelector('[data-el="displays-btn"]');
+    return { before: startedWith, after, buttonShown: !!button && !button.hidden };
+  }, 1);
+  step('displays-changed', displays);
+  out.displays = displays;
+
   // Ctrl+Alt+Delete and friends. These cannot be produced by a keystroke —
   // Windows reserves the sequence so no program can imitate a sign-in screen —
   // so they travel as actions and are driven from the toolbar.

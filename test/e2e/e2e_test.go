@@ -238,6 +238,11 @@ type driverResult struct {
 		RefusedOversize bool   `json:"refusedOversize"`
 		Received        string `json:"received"`
 	} `json:"clipboard"`
+	Displays struct {
+		Before      int  `json:"before"`
+		After       *int `json:"after"`
+		ButtonShown bool `json:"buttonShown"`
+	} `json:"displays"`
 	SystemActions []struct {
 		Label string `json:"label"`
 		Found bool   `json:"found"`
@@ -356,11 +361,27 @@ func TestFullSession(t *testing.T) {
 		}
 	}()
 
+	// Plug in a second screen a moment after the session starts. Desktop
+	// Duplication reports a topology change as a lost duplication, which the
+	// capture thread recovers from silently, so nothing would tell the client
+	// unless the agent looks — and a display picker that omits the screen you
+	// just connected is worse than none.
+	plugged := make(chan struct{})
+	go func() {
+		defer close(plugged)
+		select {
+		case <-time.After(4 * time.Second):
+			s.source.PlugMonitor(true)
+		case <-stopCopying:
+		}
+	}()
+
 	shot := filepath.Join("artifacts", "session.png")
 	_ = os.MkdirAll("artifacts", 0o755)
 	result := s.runDriver(t, code, "--screenshot="+shot)
 	close(stopCopying)
 	<-copying
+	<-plugged
 
 	// --- The picture actually arrived and was decoded. ---
 	if result.Decoded.FramesDecoded < 10 {
@@ -617,6 +638,20 @@ func TestFullSession(t *testing.T) {
 		t.Logf("cursor: %d shape(s) received, %d pixels painted locally at (%d,%d)",
 			result.Cursor.Shapes, result.Cursor.PaintedPixels,
 			result.Cursor.State.X, result.Cursor.State.Y)
+	}
+
+	// --- A screen plugged in mid-session appears without reconnecting. ---
+	if result.Displays.After == nil {
+		t.Error("a display was connected during the session but the client was never told")
+	} else if *result.Displays.After <= result.Displays.Before {
+		t.Errorf("the client saw %d displays after one was connected, having started with %d",
+			*result.Displays.After, result.Displays.Before)
+	} else {
+		t.Logf("displays: the picker went from %d to %d without a reconnect, and the button appeared (%v)",
+			result.Displays.Before, *result.Displays.After, result.Displays.ButtonShown)
+	}
+	if result.Displays.After != nil && *result.Displays.After > 1 && !result.Displays.ButtonShown {
+		t.Error("a second display arrived but the Displays button stayed hidden")
 	}
 
 	// --- Privileged actions the keyboard cannot reach. ---

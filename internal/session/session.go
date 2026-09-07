@@ -13,6 +13,7 @@ import (
 	"io"
 	"log/slog"
 	"math/rand"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -910,11 +911,49 @@ func (s *Session) pumpClipboard() {
 	}
 }
 
+// monitorSignature reduces a monitor list to a comparable string. Identity,
+// position and size all matter: moving a screen in the Windows display
+// arrangement changes where a click lands, so it is as much a change as
+// plugging one in.
+func (s *Session) monitorSignature(monitors []protocol.Monitor) string {
+	var b strings.Builder
+	for _, m := range monitors {
+		fmt.Fprintf(&b, "%d:%s:%d,%d,%dx%d;", m.ID, m.Name, m.X, m.Y, m.Width, m.Height)
+	}
+	return b.String()
+}
+
+// checkMonitorChanges tells the client when the set of displays changes.
+func (s *Session) checkMonitorChanges(last *string) {
+	monitors := s.cfg.Provider.Monitors()
+	signature := s.monitorSignature(monitors)
+	if signature == *last {
+		return
+	}
+	*last = signature
+
+	info := s.source.Info()
+	s.log.Info("the set of displays changed", "monitors", len(monitors))
+	s.sendCtrlJSON(protocol.TypeDisplayChanged, protocol.DisplayChanged{
+		Monitors: monitors, ActiveMonitor: info.ActiveMonitor,
+		StreamWidth: info.Width, StreamHeight: info.Height, SessionKind: info.SessionKind,
+	})
+}
+
 func (s *Session) pumpStats() {
 	ticker := time.NewTicker(statsInterval)
 	defer ticker.Stop()
 	var lastBytes uint64
 	last := time.Now()
+
+	// Monitors are re-checked on a slower beat than stats. Plugging a screen in
+	// or unplugging one is not something the client can be told about any other
+	// way — Desktop Duplication reports the topology change as a lost
+	// duplication, which the capture thread recovers from silently — and a
+	// display picker that lists a monitor you unplugged, or omits the one you
+	// just connected, is worse than none.
+	monitorTick := 0
+	lastMonitors := s.monitorSignature(s.cfg.Provider.Monitors())
 
 	for {
 		select {
@@ -923,6 +962,15 @@ func (s *Session) pumpStats() {
 		case now := <-ticker.C:
 			if s.source == nil {
 				continue
+			}
+
+			// Every fourth tick: twice a second is pointless for something a
+			// person does by hand, and the enumeration builds its own DXGI
+			// factory each time.
+			monitorTick++
+			if monitorTick >= 4 {
+				monitorTick = 0
+				s.checkMonitorChanges(&lastMonitors)
 			}
 			stats := s.source.Stats()
 			elapsed := now.Sub(last).Seconds()

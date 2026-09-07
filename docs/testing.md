@@ -94,6 +94,7 @@ because CI has no desktop.
 | Ending a session releases held input | the agent was told to let go |
 | The local cursor is drawn | 1 shape received, 199 pixels painted |
 | Ctrl+Alt+Delete reaches the agent | 3 privileged actions crossed, chosen from the real menu |
+| A screen plugged in mid-session appears | the picker went from 1 to 2 with no reconnect |
 | Forgetting a device takes effect at once | the running agent dropped it with no restart |
 | Latency is measured, not assumed | median 49 ms over loopback (fails above 140) |
 | A dropped session recovers on its own | reconnected with a new session ID |

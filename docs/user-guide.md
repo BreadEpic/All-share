@@ -155,6 +155,21 @@ rather the characters match, turn on **Match the characters I type** in Settings
 
 ---
 
+## More than one monitor
+
+If your PC has several monitors, a **Displays** button appears in the toolbar.
+It lists each one with its size, and switching is one click.
+
+You see one monitor at a time, at full quality, rather than all of them squashed
+side by side into a picture where nothing is readable. Your mouse is mapped to
+whichever monitor you are watching, so clicking where you are looking clicks
+where you meant — which is the part that usually goes wrong.
+
+The button is hidden entirely when your PC has one monitor. If you plug in or
+unplug a screen during a session, the list updates on its own.
+
+---
+
 ## The clipboard
 
 Copy on one device, paste on the other. It just works, in both directions, for
