@@ -236,6 +236,16 @@ type driverResult struct {
 		RefusedOversize bool   `json:"refusedOversize"`
 		Received        string `json:"received"`
 	} `json:"clipboard"`
+	Lock struct {
+		Fullscreen         bool `json:"fullscreen"`
+		Pointer            bool `json:"pointer"`
+		Keyboard           bool `json:"keyboard"`
+		Unadjusted         bool `json:"unadjusted"`
+		ReleasedPointer    bool `json:"releasedPointer"`
+		ReleasedController bool `json:"releasedController"`
+		ReleasedKeys       bool `json:"releasedKeys"`
+		RelativeMoves      int  `json:"relativeMoves"`
+	} `json:"lock"`
 	Latency *struct {
 		Samples  int `json:"samples"`
 		MinMs    int `json:"minMs"`
@@ -473,6 +483,87 @@ func TestFullSession(t *testing.T) {
 		t.Error("the session ended without releasing held input; a key would be stuck on the PC")
 	} else {
 		t.Log("teardown: the agent was told to release everything when the session ended")
+	}
+
+	// --- Mouse Lock: the feature that makes this remote control. ---
+	//
+	// The requirement was explicit that this must be real Pointer Lock, not a
+	// cursor drawn over a picture, so the assertion is on the browser's own
+	// document.pointerLockElement rather than on anything the client believes.
+	if !result.Lock.Pointer {
+		t.Error("Pointer Lock was not acquired; the mouse is not actually captured")
+	} else {
+		t.Logf("mouse lock: pointer locked (fullscreen %v, keyboard lock %v, unadjusted movement %v)",
+			result.Lock.Fullscreen, result.Lock.Keyboard, result.Lock.Unadjusted)
+	}
+	if result.Lock.Pointer && !result.Lock.Unadjusted {
+		// Not a failure — a browser without the option is meant to degrade to
+		// accelerated movement — but it changes how the product feels, so it is
+		// worth seeing in the log rather than discovering by hand.
+		t.Log("mouse lock: unadjustedMovement was refused; movement will be OS-accelerated")
+	}
+
+	// Relative movement must arrive as relative. Sending absolute coordinates
+	// while locked would put the remote cursor wherever the browser's virtual
+	// pointer happens to be, which is not where the user is aiming.
+	relative := 0
+	for _, event := range events {
+		if event.Kind == agentinput.EventMoveRelative {
+			relative++
+		}
+	}
+	if result.Lock.RelativeMoves > 0 && relative == 0 {
+		t.Error("relative movement was sent while locked but none reached the agent")
+	} else if relative > 0 {
+		t.Logf("mouse lock: %d of %d relative movements arrived while locked",
+			relative, result.Lock.RelativeMoves)
+	}
+	// The point of relative mode is that it does *not* send absolute positions:
+	// while locked, an absolute packet would put the remote cursor wherever the
+	// browser's virtual pointer sits rather than where the user is aiming.
+	//
+	// The lock window is bounded by the first and last relative move, because
+	// those are the only pointer events the driver produces while locked. After
+	// the emergency release the driver goes back to absolute movement for the
+	// latency sweep, and those are correct.
+	if relative > 1 {
+		first, last := -1, -1
+		for i, event := range events {
+			if event.Kind == agentinput.EventMoveRelative {
+				if first < 0 {
+					first = i
+				}
+				last = i
+			}
+		}
+		absoluteWhileLocked := 0
+		for _, event := range events[first:last] {
+			if event.Kind == agentinput.EventMoveAbsolute {
+				absoluteWhileLocked++
+			}
+		}
+		if absoluteWhileLocked > 0 {
+			t.Errorf("%d absolute mouse positions were sent while the pointer was locked",
+				absoluteWhileLocked)
+		} else {
+			t.Log("mouse lock: no absolute positions were sent while locked, as required")
+		}
+	}
+
+	// The emergency release is the way out of a stuck lock. If it does not
+	// work, a user whose remote application has swallowed the pointer has no
+	// way back to their own machine short of the power button.
+	if !result.Lock.ReleasedPointer {
+		t.Error("Ctrl+Alt+Shift+Q did not release the pointer")
+	}
+	if !result.Lock.ReleasedController {
+		t.Error("the client still believes the pointer is locked after the emergency release")
+	}
+	if !result.Lock.ReleasedKeys {
+		t.Error("the emergency release left keys or buttons held")
+	}
+	if result.Lock.ReleasedPointer && result.Lock.ReleasedKeys {
+		t.Log("emergency release: Ctrl+Alt+Shift+Q freed the pointer and every held key")
 	}
 
 	// --- Clipboard, both directions and the size limit. ---

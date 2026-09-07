@@ -267,6 +267,78 @@ async function main() {
     received: received
   };
 
+  // Mouse Lock and fullscreen. This is the feature that separates real remote
+  // control from a picture you click at, so it is exercised for real rather
+  // than asserted about: fullscreen, then Keyboard Lock, then Pointer Lock with
+  // unadjustedMovement, then a relative mouse move that must arrive as relative
+  // rather than absolute, then the emergency release.
+  await page.click('[data-el="stage"]', { position: { x: 40, y: 40 } });
+  const lock = await page.evaluate(async () => {
+    const app = window.AllShare.app;
+    const result = await app.input.enterLock({});
+    await new Promise((r) => setTimeout(r, 300));
+    return {
+      requested: result,
+      pointerLocked: !!document.pointerLockElement,
+      fullscreenElement: !!document.fullscreenElement,
+      controllerThinksLocked: app.input.pointerLocked
+    };
+  });
+  step('lock-entered', lock);
+
+  // Relative movement, dispatched as real PointerEvents on the stage.
+  //
+  // page.mouse.move() cannot be used here: it goes through CDP's
+  // Input.dispatchMouseEvent, and Chromium derives movementX/movementY for a
+  // locked pointer from raw OS input, so a CDP-synthesised move always reports
+  // zero movement. Dispatching the event directly runs the client's real
+  // handler with real deltas, which is the part under test — that a locked
+  // pointer produces *relative* packets rather than absolute ones.
+  let relativeMoves = 0;
+  if (lock.pointerLocked) {
+    relativeMoves = await page.evaluate(async () => {
+      const stage = document.querySelector('[data-el="stage"]');
+      const deltas = [[17, -9], [-4, 23], [60, 41], [-31, -12]];
+      for (const [dx, dy] of deltas) {
+        stage.dispatchEvent(new PointerEvent('pointermove', {
+          bubbles: true, pointerType: 'mouse', movementX: dx, movementY: dy
+        }));
+        await new Promise((r) => setTimeout(r, 30));
+      }
+      return deltas.length;
+    });
+    await page.waitForTimeout(200);
+  }
+  step('relative-moves-sent', { locked: lock.pointerLocked, moves: relativeMoves });
+
+  // The emergency release exists because a stuck lock with a stuck modifier is
+  // the worst state this product can be in. It must work from a keystroke, not
+  // from a button the user cannot reach while locked.
+  const released = await page.evaluate(async () => {
+    const app = window.AllShare.app;
+    document.dispatchEvent(new KeyboardEvent('keydown', {
+      code: 'KeyQ', key: 'Q', ctrlKey: true, altKey: true, shiftKey: true, bubbles: true
+    }));
+    await new Promise((r) => setTimeout(r, 400));
+    return {
+      pointerLocked: !!document.pointerLockElement,
+      controllerThinksLocked: app.input.pointerLocked,
+      anyKeyStillHeld: app.input._keys.any(),
+      buttonsStillHeld: app.input._buttons
+    };
+  });
+  step('emergency-release', released);
+  out.lock = {
+    fullscreen: !!lock.fullscreenElement,
+    pointer: !!lock.pointerLocked,
+    keyboard: !!(lock.requested && lock.requested.keyboard),
+    unadjusted: !!(lock.requested && !lock.requested.accelerated),
+    releasedPointer: !released.pointerLocked,
+    releasedController: !released.controllerThinksLocked,
+    releasedKeys: !released.anyKeyStillHeld && released.buttonsStillHeld === 0,
+    relativeMoves: relativeMoves
+  };
+
   // A held key that is never released, so the test can prove the agent is told
   // to let go when the session ends rather than leaving it stuck down.
   await page.keyboard.down('KeyW');

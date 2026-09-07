@@ -146,6 +146,104 @@ async function checkServiceAddressPolicy(browser) {
   }
 }
 
+async function checkSettingsPersist(browser) {
+  // Settings must survive a reload, and must survive storage being unavailable.
+  // A Chromebook in a restricted profile throws on localStorage rather than
+  // returning null, and an app that dies there is an app that will not open for
+  // the people most likely to be handed a managed device.
+  const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  const page = await context.newPage();
+  const thrown = [];
+  page.on('pageerror', (err) => thrown.push(String(err)));
+  try {
+    await page.goto('file://' + CLIENT);
+    await page.waitForFunction(() => window.AllShare && window.AllShare.Store);
+
+    const identityBefore = await page.evaluate(async () => {
+      await new Promise((r) => setTimeout(r, 300));
+      return window.AllShare.Identity.deviceId;
+    });
+
+    await page.evaluate(() => {
+      const S = window.AllShare.Store;
+      S.set('rendezvous', 'wss://example.invalid/rv');
+      S.set('preset', 'gaming');
+      S.set('maxFps', 90);
+      S.set('latencyMode', 'balanced');
+      S.set('clipboardToRemote', false);
+      S.set('theme', 'light');
+    });
+    await page.waitForTimeout(200);
+    await page.reload();
+    await page.waitForFunction(() => window.AllShare && window.AllShare.Store);
+    await page.waitForTimeout(400);
+
+    const after = await page.evaluate(() => {
+      const S = window.AllShare.Store;
+      return {
+        rendezvous: S.get('rendezvous'),
+        preset: S.get('preset'),
+        maxFps: S.get('maxFps'),
+        latencyMode: S.get('latencyMode'),
+        clipboardToRemote: S.get('clipboardToRemote'),
+        theme: S.get('theme'),
+        deviceId: window.AllShare.Identity.deviceId
+      };
+    });
+    check('the service address survives a reload', after.rendezvous === 'wss://example.invalid/rv', after.rendezvous);
+    check('the streaming preset survives a reload', after.preset === 'gaming', after.preset);
+    check('a numeric setting survives as a number', after.maxFps === 90, typeof after.maxFps + ' ' + after.maxFps);
+    check('the latency mode survives a reload', after.latencyMode === 'balanced', after.latencyMode);
+    check('a false switch survives as false', after.clipboardToRemote === false, String(after.clipboardToRemote));
+    check('the theme survives a reload', after.theme === 'light', after.theme);
+
+    // The device identity is the credential a PC pairs with. If it changed on
+    // reload, every paired PC would stop recognising this device.
+    check('the device identity survives a reload',
+      !!after.deviceId && after.deviceId === identityBefore,
+      identityBefore + ' -> ' + after.deviceId);
+
+    check('the page threw nothing', thrown.length === 0, thrown.join(' | '));
+  } finally {
+    await context.close();
+  }
+}
+
+async function checkStorageFailureIsSurvivable(browser) {
+  // localStorage that throws on every access, as a locked-down profile does.
+  const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  const page = await context.newPage();
+  const thrown = [];
+  page.on('pageerror', (err) => thrown.push(String(err)));
+  try {
+    await page.addInitScript(() => {
+      const boom = () => { throw new DOMException('denied', 'SecurityError'); };
+      Object.defineProperty(window, 'localStorage', {
+        configurable: true,
+        get() { return { getItem: boom, setItem: boom, removeItem: boom, clear: boom }; }
+      });
+    });
+    await page.goto('file://' + CLIENT);
+    await page.waitForFunction(() => window.AllShare && window.AllShare.Store, { timeout: 5000 })
+      .catch(() => {});
+    await page.waitForTimeout(500);
+
+    const state = await page.evaluate(() => ({
+      loaded: !!(window.AllShare && window.AllShare.Store),
+      preset: window.AllShare && window.AllShare.Store && window.AllShare.Store.get('preset'),
+      wrote: (() => {
+        try { window.AllShare.Store.set('preset', 'gaming'); return true; } catch (e) { return String(e); }
+      })()
+    }));
+    check('the app still starts when storage is unavailable', state.loaded === true);
+    check('and falls back to defaults', state.preset === 'balanced' || state.preset === 'gaming', String(state.preset));
+    check('and writing does not throw', state.wrote === true, String(state.wrote));
+    check('the page threw nothing', thrown.length === 0, thrown.join(' | '));
+  } finally {
+    await context.close();
+  }
+}
+
 async function checkOldBrowserRefusal(browser) {
   // A browser without Ed25519 must be told so on the first screen, not left to
   // fail with a bare NotSupportedError when it generates its identity. The only
@@ -206,6 +304,8 @@ async function main() {
   try {
     await checkDeveloperMode(browser);
     await checkServiceAddressPolicy(browser);
+    await checkSettingsPersist(browser);
+    await checkStorageFailureIsSurvivable(browser);
     await checkOldBrowserRefusal(browser);
     await checkSettingsRender(browser);
   } finally {
