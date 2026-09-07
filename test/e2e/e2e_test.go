@@ -547,6 +547,47 @@ func TestReconnectAndServiceOutage(t *testing.T) {
 //
 // Oscillation is the failure mode that matters: a stream that pumps between two
 // resolutions is more distracting than one that simply sits at the lower one.
+// TestClientInterface drives the parts of the interface that need a real
+// browser but no network: the hidden developer mode, the service-address
+// policy as the connection code applies it, and every settings tab in both
+// colour schemes.
+//
+// These are the places a unit test cannot see. A panel that throws on open
+// takes the whole settings modal with it, and a reveal gesture that fires on a
+// stray click puts a user somewhere they did not ask to be.
+func TestClientInterface(t *testing.T) {
+	skipUnlessEnabled(t)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, nodeBinary(), "uiprobe.js")
+	cmd.Dir = "."
+	output, err := cmd.CombinedOutput()
+
+	var result struct {
+		Checks []struct {
+			Name   string `json:"name"`
+			Pass   bool   `json:"pass"`
+			Detail string `json:"detail"`
+		} `json:"checks"`
+		Errors []string `json:"errors"`
+		OK     bool     `json:"ok"`
+	}
+	if jsonErr := json.Unmarshal(output, &result); jsonErr != nil {
+		t.Fatalf("could not read the UI probe result: %v\n%s", jsonErr, output)
+	}
+	for _, c := range result.Checks {
+		if !c.Pass {
+			t.Errorf("%s (%s)", c.Name, c.Detail)
+		}
+	}
+	if !result.OK || err != nil {
+		t.Fatalf("the UI probe failed (%v)", err)
+	}
+	t.Logf("interface: %d checks passed in a real browser, dark and light", len(result.Checks))
+}
+
 func TestQualityControllerDoesNotOscillate(t *testing.T) {
 	provider, err := testsource.New()
 	if err != nil {

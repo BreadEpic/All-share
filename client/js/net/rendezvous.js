@@ -352,6 +352,7 @@
     return err;
   }
 
+  Rendezvous.SIGNAL_VERSION = SIGNAL_VERSION;
   AS.Rendezvous = Rendezvous;
   AS.rendezvousError = rendezvousError;
 })(window.AllShare);

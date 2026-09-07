@@ -426,6 +426,28 @@
 .rowlist__title { font-size: 14px; font-weight: 600; }
 .rowlist__sub { font-size: 12.5px; color: var(--text-dim); }
 
+/* The about line doubles as the way in to the developer tab, so it has to be a
+   button for keyboard and screen-reader users — but it must not look like one.
+   Everything that makes a button a button is stripped back off. */
+.about__wrap { margin-top: 20px; padding-top: 14px; border-top: 1px solid var(--border); }
+.about {
+  display: block; width: 100%; padding: 4px 0;
+  background: none; border: 0; cursor: default;
+  font: inherit; font-size: 12.5px; color: var(--text-faint); text-align: center;
+  -webkit-user-select: none; user-select: none;
+}
+.about:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 6px; }
+
+/* Developer panel: log and raw connection report. */
+.devlog {
+  max-height: 240px; overflow: auto; margin: 0 0 10px;
+  padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px;
+  background: var(--bg-2);
+  font-family: var(--font-mono); font-size: 11px; line-height: 1.5;
+  color: var(--text-dim); white-space: pre-wrap; word-break: break-word;
+}
+.devrow { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 18px; }
+
 @media (max-width: 560px) {
   .devices { grid-template-columns: 1fr; }
   .brand__by { display: none; }

@@ -22,6 +22,13 @@
       { id: 'sound', label: 'Sound & clipboard', build: buildSoundClipboard },
       { id: 'advanced', label: 'Advanced', build: buildAdvanced }
     ];
+    // The developer tab is hidden until someone deliberately reveals it (tap the
+    // version line seven times, in General). Everything on it is diagnostic
+    // detail that would only confuse the people this product is built for, but
+    // that is genuinely needed when something is going wrong.
+    if (Store.get('developerMode')) {
+      tabs.push({ id: 'developer', label: 'Developer', build: buildDeveloper });
+    }
 
     const tabBar = U.h('div', { class: 'modal__tabs', role: 'tablist' });
     const panels = U.h('div');
@@ -147,7 +154,76 @@
       });
     }
     wrap.appendChild(list);
+
+    wrap.appendChild(buildAboutRow(app));
     return wrap;
+  }
+
+  /**
+   * The about line, and the way in to the developer tab.
+   *
+   * Seven taps is the long-established convention for this (Android's build
+   * number, and most things that copied it). It is deliberately something
+   * nobody does by accident and everybody can be talked through over the phone.
+   */
+  function buildAboutRow(app) {
+    let taps = 0;
+    let lastTap = 0;
+    // One toast, replaced as the count changes. Stacking a new one per tap
+    // buries whatever else the app was trying to say.
+    let countdownToast = null;
+    const dismissCountdown = function () {
+      if (countdownToast) { countdownToast(); countdownToast = null; }
+    };
+
+    const line = U.h('button', {
+      class: 'about',
+      type: 'button',
+      title: 'ALL SHARE',
+      text: 'ALL SHARE ' + AS.VERSION + ' — Powered by MMC'
+    });
+
+    line.addEventListener('click', function () {
+      const now = Date.now();
+      // Taps must be in one run. A tap minutes after the last one starts over,
+      // so a curious click today plus another next week never adds up.
+      if (now - lastTap > 3000) taps = 0;
+      lastTap = now;
+      taps++;
+
+      if (Store.get('developerMode')) {
+        if (taps >= 7) {
+          taps = 0;
+          dismissCountdown();
+          Store.set('developerMode', false);
+          UI.toast({ kind: 'ok', title: 'Developer tools hidden' });
+          SettingsUI.open(app, 'general');
+        }
+        return;
+      }
+      if (taps >= 7) {
+        taps = 0;
+        dismissCountdown();
+        Store.set('developerMode', true);
+        UI.toast({
+          kind: 'ok',
+          title: 'Developer tools are on',
+          text: 'A Developer tab has been added to Settings. Tap the version line seven times again to hide it.'
+        });
+        SettingsUI.open(app, 'developer');
+      } else if (taps >= 4) {
+        const remaining = 7 - taps;
+        dismissCountdown();
+        countdownToast = UI.toast({
+          title: remaining === 1
+            ? 'One more to turn on developer tools'
+            : remaining + ' more to turn on developer tools',
+          timeout: 3000
+        });
+      }
+    });
+
+    return U.h('div', { class: 'about__wrap' }, [line]);
   }
 
   function buildStreaming(app) {
@@ -441,6 +517,134 @@
       return names.join(', ') || 'none';
     } catch (err) {
       return 'unknown';
+    }
+  }
+
+  /**
+   * The developer tab: a live log, the raw WebRTC report, and the internals.
+   *
+   * Nothing here is required to use ALL SHARE. It exists so that when something
+   * does go wrong, the answer is available without asking anyone to open a
+   * browser console — which on a Chromebook is not always something a user can
+   * be talked through.
+   */
+  function buildDeveloper(app) {
+    const wrap = U.h('div');
+
+    wrap.appendChild(U.h('p', {
+      class: 'modal__note',
+      text: 'These tools are for troubleshooting. Nothing here needs changing for normal use.'
+    }));
+
+    // --- Live log -----------------------------------------------------------
+    wrap.appendChild(section('Log'));
+    const logBox = U.h('pre', { class: 'devlog' });
+    const renderLog = function () { logBox.textContent = AS.Log.dump() || '(nothing logged yet)'; };
+    renderLog();
+
+    // The log refreshes on a timer while this panel is on screen. The interval
+    // is cleared when the modal closes, so a settings screen opened and shut
+    // fifty times does not leave fifty timers running.
+    const logTimer = setInterval(function () {
+      if (!logBox.isConnected) { clearInterval(logTimer); return; }
+      const atBottom = logBox.scrollTop + logBox.clientHeight >= logBox.scrollHeight - 8;
+      renderLog();
+      if (atBottom) logBox.scrollTop = logBox.scrollHeight;
+    }, 1000);
+
+    wrap.appendChild(logBox);
+    wrap.appendChild(U.h('div', { class: 'devrow' }, [
+      U.h('button', {
+        class: 'btn btn--tiny', text: 'Copy log',
+        onclick: function () { copyOrShow(AS.Log.dump(), 'Log'); }
+      }),
+      U.h('button', {
+        class: 'btn btn--tiny', text: 'Clear',
+        onclick: function () { AS.Log.clear(); renderLog(); }
+      })
+    ]));
+
+    // --- Raw WebRTC report --------------------------------------------------
+    wrap.appendChild(section('Connection report'));
+    const statsBox = U.h('pre', { class: 'devlog' , text: 'No session is running.' });
+    const refreshStats = async function () {
+      if (!app.session) {
+        statsBox.textContent = 'No session is running.';
+        return;
+      }
+      const raw = await app.session.rawStats();
+      statsBox.textContent = raw.length
+        ? JSON.stringify(raw, null, 2)
+        : 'The session reported no statistics.';
+    };
+    refreshStats();
+    wrap.appendChild(statsBox);
+    wrap.appendChild(U.h('div', { class: 'devrow' }, [
+      U.h('button', { class: 'btn btn--tiny', text: 'Refresh', onclick: refreshStats }),
+      U.h('button', {
+        class: 'btn btn--tiny', text: 'Copy report',
+        onclick: function () { copyOrShow(statsBox.textContent, 'Connection report'); }
+      }),
+      U.h('button', {
+        class: 'btn btn--tiny', text: 'Request a keyframe',
+        onclick: function () {
+          if (!app.session) { UI.toast({ kind: 'warn', title: 'No session is running' }); return; }
+          app.session.requestKeyframe();
+          UI.toast({ title: 'Keyframe requested' });
+        }
+      })
+    ]));
+
+    // --- Internals ----------------------------------------------------------
+    wrap.appendChild(section('Internals'));
+    wrap.appendChild(U.h('div', { class: 'rowlist' }, [
+      infoRow('Client version', AS.VERSION),
+      infoRow('Signalling version', String(AS.Rendezvous.SIGNAL_VERSION)),
+      infoRow('Wire protocol', AS.Protocol.VERSION_MAJOR + '.' + AS.Protocol.VERSION_MINOR),
+      infoRow('Device public key', AS.Identity.deviceId || '—'),
+      infoRow('Session state', app.session ? app.session.state : 'no session'),
+      infoRow('Secure context', String(self.isSecureContext)),
+      infoRow('Page origin', location.protocol === 'file:' ? 'file:// (local file)' : location.origin),
+      infoRow('Pointer Lock', 'requestPointerLock' in Element.prototype ? 'available' : 'missing'),
+      infoRow('Keyboard Lock', navigator.keyboard && navigator.keyboard.lock ? 'available' : 'missing'),
+      infoRow('Video decoders', describeDecoders())
+    ]));
+
+    wrap.appendChild(U.h('div', { class: 'devrow' }, [
+      U.h('button', {
+        class: 'btn btn--tiny', text: 'Hide developer tools',
+        onclick: function () {
+          Store.set('developerMode', false);
+          UI.toast({ kind: 'ok', title: 'Developer tools hidden' });
+          SettingsUI.open(app, 'general');
+        }
+      })
+    ]));
+
+    return wrap;
+  }
+
+  /**
+   * Put text on the clipboard, falling back to showing it.
+   *
+   * The clipboard write can be refused — a Chromebook in a restricted profile
+   * does refuse it — and silently doing nothing is the worst outcome for a
+   * button whose entire purpose is handing information to somebody else.
+   */
+  async function copyOrShow(text, title) {
+    try {
+      await navigator.clipboard.writeText(text);
+      UI.toast({ kind: 'ok', title: title + ' copied' });
+    } catch (err) {
+      UI.modal({
+        title: title,
+        wide: true,
+        body: U.h('pre', {
+          text: text,
+          style: { maxHeight: '50vh', overflow: 'auto', fontSize: '11px', whiteSpace: 'pre-wrap' }
+        }),
+        actions: [{ label: 'Close' }]
+      });
     }
   }
 

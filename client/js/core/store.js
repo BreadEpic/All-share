@@ -55,6 +55,10 @@
     // Diagnostics
     showHud: false,
     debugLogging: false,
+    // Hidden until deliberately revealed: seven taps on the version line in
+    // Settings → General. Off is the right default — the developer tab shows
+    // raw connection reports that would only worry the people this is for.
+    developerMode: false,
     relayPreference: 'auto'
   };
 

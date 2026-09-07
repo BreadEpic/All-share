@@ -687,6 +687,29 @@
 
   // ----------------------------------------------------------- close
 
+  /**
+   * Return the raw getStats() report as plain objects, for the developer panel.
+   *
+   * Deliberately separate from the polished stats above: this is the unfiltered
+   * view someone needs when the polished one does not explain what is happening.
+   */
+  Session.prototype.rawStats = async function () {
+    if (!this._pc || this._closed) return [];
+    let report;
+    try {
+      report = await this._pc.getStats();
+    } catch (err) {
+      return [];
+    }
+    const out = [];
+    report.forEach(function (entry) {
+      const plain = {};
+      for (const key in entry) plain[key] = entry[key];
+      out.push(plain);
+    });
+    return out;
+  };
+
   Session.prototype.close = function (reason) {
     if (this._closed) return;
     this._closed = true;

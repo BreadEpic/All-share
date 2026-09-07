@@ -12,6 +12,10 @@ window.AllShare = window.AllShare || {};
 (function (AS) {
   'use strict';
 
+  // The client's own version. It ships as plain files with no build step, so
+  // this is edited by hand at release time rather than substituted by a tool.
+  AS.VERSION = '1.0.0';
+
   const Util = {};
 
   // -------------------------------------------------------------- DOM
