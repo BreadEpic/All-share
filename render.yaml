@@ -1,0 +1,68 @@
+# ALL SHARE — one-click deployment of the control plane.
+#
+# This is the "introduce my two devices to each other" service. It is the only
+# piece of ALL SHARE that has to live somewhere reachable from the internet, and
+# it is deliberately tiny: no database, no disk worth keeping, and a few
+# kilobytes per connection. Your screen, sound, keyboard and mouse never pass
+# through it — those go directly between your own two devices.
+#
+# To deploy: open Render, choose "New" → "Blueprint", and point it at this
+# repository. Render reads this file, builds the container and gives you an
+# address. Nothing else to configure.
+#
+# Why the free plan is genuinely fine here:
+#
+#   * It sleeps after 15 minutes with no traffic. The ALL SHARE agent holds a
+#     WebSocket open the whole time it is running, which counts as traffic, so
+#     while your PC is on the service stays awake. When your PC is off there is
+#     nothing to serve anyway, and the agent's own reconnect wakes it.
+#
+#   * Its storage is disposable. That is safe here by design: your PC holds the
+#     authoritative list of paired devices and re-sends it on every reconnect,
+#     so a wipe costs nothing and nobody re-pairs. There is a test for exactly
+#     this (TestServerStateIsRebuiltByTheAgent).
+#
+#   * TLS and the hostname come with it, so there is no certificate to renew and
+#     no domain to buy.
+
+services:
+  - type: web
+    name: allshare
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: free
+    # Render terminates TLS and forwards the real client address in
+    # X-Forwarded-For. Without -trust-proxy every connection would look like it
+    # came from Render's own proxy, and the per-address rate limits — which are
+    # what stop someone grinding at pairing codes — would apply to everyone at
+    # once instead of per user.
+    dockerCommand: /allshare-server -trust-proxy
+    healthCheckPath: /healthz
+    autoDeployTrigger: commit
+    envVars:
+      # Render supplies PORT; the server binds whatever it is given.
+      - key: ALLSHARE_LOG_LEVEL
+        value: info
+
+      # Relay of last resort.
+      #
+      # About one connection in ten cannot be made directly — both ends behind
+      # carrier-grade NAT, or a network that blocks UDP outright — and those
+      # need traffic bounced through a relay. Render's free plan does not offer
+      # the UDP ports a relay needs, so the built-in one cannot run here.
+      #
+      # Leave this unset and ALL SHARE advertises public STUN only: direct
+      # connections work, and the rare network that needs a relay reports
+      # "Could not find a path to your PC" honestly rather than hanging.
+      #
+      # To cover that last case, paste a relay's details here as JSON. Several
+      # providers offer a free allowance and issue credentials without a card;
+      # the format is the same one a browser expects:
+      #
+      #   [{"urls":["turn:relay.example.com:80"],
+      #     "username":"...","credential":"..."}]
+      #
+      # It is marked sync:false so the value is entered in Render's dashboard
+      # rather than committed to this file.
+      - key: ALLSHARE_ICE_SERVERS
+        sync: false

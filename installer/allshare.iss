@@ -83,6 +83,15 @@ Filename: "{app}\{#AgentExe}"; \
   Parameters: "install -service ""{code:GetServiceAddress}"" -name ""{code:GetDeviceName}"""; \
   StatusMsg: "Setting up ALL SHARE..."; Flags: runhidden waituntilterminated
 
+; Write a copy of the browser client to the Desktop with this PC's service
+; address already in it. Without this the user has to type a wss:// address into
+; a Chromebook by hand — the worst step in the whole product, and one they have
+; just completed here.
+Filename: "{app}\{#AgentExe}"; \
+  Parameters: "client -out ""{autodesktop}\ALL SHARE Client"""; \
+  StatusMsg: "Preparing the client for your other devices..."; \
+  Flags: runhidden waituntilterminated
+
 Filename: "{app}\{#AgentExe}"; Description: "Add a device now"; \
   Parameters: "pair"; Flags: postinstall nowait skipifsilent
 

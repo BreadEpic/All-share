@@ -65,6 +65,8 @@ func main() {
 		err = cmdStatus(args)
 	case "forget", "unpair":
 		err = cmdForget(args)
+	case "client":
+		err = cmdClient(args)
 	case "config":
 		err = cmdConfig(args)
 	case "service", "host", "install", "uninstall":
@@ -92,6 +94,7 @@ Usage:
   allshare-agent pair         Show a pairing code and wait for a device
   allshare-agent status       Show what this PC is doing
   allshare-agent forget       Remove a paired device from this PC
+  allshare-agent client       Write out a ready-to-use client for another device
   allshare-agent config       Show or change settings
   allshare-agent service      Run as a Windows service
   allshare-agent host         Run the desktop worker (started by the service)

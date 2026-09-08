@@ -50,9 +50,14 @@ code.
 
 Full walkthrough: **[docs/user-guide.md](docs/user-guide.md)**.
 
-You also need one small server on the internet to introduce your devices. It
-runs on the cheapest VPS there is, or on your own network if you only need
-access from home: **[docs/deployment.md](docs/deployment.md)**.
+Behind the scenes there is one small service that introduces your two devices —
+it never sees your screen. Deploying it is one click on a free plan, with no
+domain, certificate or card: **[docs/deployment.md](docs/deployment.md)**. Once
+it exists, the installer hands you a client folder that already knows its
+address, so there is nothing to type on the Chromebook.
+
+Why it works this way, and what it does and does not carry:
+**[docs/networking.md](docs/networking.md)**.
 
 ---
 
@@ -61,7 +66,8 @@ access from home: **[docs/deployment.md](docs/deployment.md)**.
 | | |
 |---|---|
 | **[User guide](docs/user-guide.md)** | Setting up, connecting, mouse lock, keyboard, clipboard, waking, troubleshooting |
-| **[Deployment](docs/deployment.md)** | Running the service: systemd, Caddy, nginx, every option, firewall, backup |
+| **[Networking](docs/networking.md)** | Why you don't run a server, what the hosted part does, direct vs relay, the full audit |
+| **[Deployment](docs/deployment.md)** | Running the service: one-click, systemd, Caddy, nginx, every option |
 | **[Waking a sleeping PC](docs/wake.md)** | Why the obvious approach fails, and the four methods that work |
 | **[Performance](docs/performance.md)** | Where the milliseconds go, and what to change when it is not fast enough |
 | **[Security](docs/security.md)** | Threat model, cryptography, the full security review, deliberate trade-offs |
